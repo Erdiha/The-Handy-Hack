@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { users, handymanProfiles, neighborhoods } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
+import { withAuth, AuthenticatedRequest } from '@/lib/security';
 
-export async function GET(request: Request) {
+export const GET = withAuth(async (request: AuthenticatedRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const service = searchParams.get('service');
@@ -78,4 +79,4 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-}
+})

@@ -1,100 +1,91 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '@/components/ui/Button';
-import Link from 'next/link';
-interface Handyman {
-  id: number;
-  name: string;
-  bio: string;
-  hourlyRate: string;
-  neighborhood: string;
-  services: string[];
-  isAvailable: boolean;
-  distance: number;
-  rating: number;
-  reviewCount: number;
-  responseTime: string;
-}
+import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/Button";
+import Link from "next/link";
+import {Handyman} from '@/types/handyman'
+
 
 export default function SearchPage() {
   const { data: session } = useSession();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedService, setSelectedService] = useState('All Services');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedService, setSelectedService] = useState("All Services");
   const [availableOnly, setAvailableOnly] = useState(false);
   const [handymen, setHandymen] = useState<Handyman[]>([]);
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const services = [
-    'All Services',
-    'Plumbing',
-    'Electrical',
-    'Painting',
-    'Carpentry',
-    'Appliance Repair',
-    'Furniture Assembly',
-    'Home Cleaning',
-    'Landscaping',
-    'Tile Work',
-    'Drywall Repair'
+    "All Services",
+    "Plumbing",
+    "Electrical",
+    "Painting",
+    "Carpentry",
+    "Appliance Repair",
+    "Furniture Assembly",
+    "Home Cleaning",
+    "Landscaping",
+    "Tile Work",
+    "Drywall Repair",
   ];
 
   useEffect(() => {
     fetchHandymen();
   }, [selectedService, availableOnly]);
-  
-  
+
   const fetchHandymen = async () => {
     setLoading(true);
-    setError('');
-    
+    setError("");
+
     try {
       const params = new URLSearchParams();
-      if (selectedService !== 'All Services') {
-        params.append('service', selectedService);
+      if (selectedService !== "All Services") {
+        params.append("service", selectedService);
       }
       if (availableOnly) {
-        params.append('availableOnly', 'true');
+        params.append("availableOnly", "true");
       }
-      
+
       const response = await fetch(`/api/handymen?${params}`);
       const data = await response.json();
-      
+
       if (data.success) {
         setHandymen(data.handymen);
       } else {
-        setError('Failed to load handymen');
+        setError("Failed to load handymen");
       }
     } catch (error) {
-      setError('Something went wrong');
-      console.error('Error fetching handymen:', error);
+      setError("Something went wrong");
+      console.error("Error fetching handymen:", error);
     } finally {
       setLoading(false);
     }
   };
 
-
-  const filteredHandymen = handymen.filter(handyman => {
-    const matchesSearch = searchQuery === '' ||
+  const filteredHandymen = handymen.filter((handyman) => {
+    const matchesSearch =
+      searchQuery === "" ||
       handyman.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      handyman.services.some(service => service.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesService = selectedService === 'All Services' ||
+      handyman.services.some((service) =>
+        service.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+    const matchesService =
+      selectedService === "All Services" ||
       handyman.services.includes(selectedService);
-    
+
     const matchesAvailability = !availableOnly || handyman.isAvailable;
-    
+
     return matchesSearch && matchesService && matchesAvailability;
   });
 
   return (
     <div className="min-h-[calc(100vh-5rem)] bg-orange-50">
       {/* Header Section */}
-      <div className="bg-white border-b border-orange-100">
+      <div className="border-b border-orange-100 md:pt-16 ">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -103,13 +94,14 @@ export default function SearchPage() {
           >
             {/* Title */}
             <div className="text-center mb-8">
-              <h1 className="text-4xl sm:text-5xl font-bold text-slate-800 mb-4">
+              <h1 className="text-3xl md:text-4xl font-bold text-slate-800 mb-8">
                 Find Your Perfect
-                <span className="block text-orange-600">Neighborhood Pro</span>
+                <span className="block text-orange-600 md:text-5xl text-3xl mt-3">Neighborhood Pro</span>
               </h1>
               <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-                {session?.user ? `Hey ${session.user.name}! ` : ''}
-                Connect with trusted local handymen in your area. Real neighbors, real skills.
+                {session?.user ? `Hey ${session.user.name}! ` : ""}
+                Connect with trusted local handymen in your area. Real
+                neighbors, real skills.
               </p>
             </div>
 
@@ -152,20 +144,23 @@ export default function SearchPage() {
                 <div>
                   <button
                     onClick={() => setAvailableOnly(!availableOnly)}
-                    className={`w-full px-4 py-3 rounded-xl font-semibold transition-all duration-200 ${availableOnly
-                        ? 'bg-green-500 text-white shadow-md hover:bg-green-600'
-                        : 'bg-white border border-slate-200 text-slate-700 hover:border-green-300 hover:text-green-600'
-                      }`}
+                    className={`w-full px-4 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                      availableOnly
+                        ? "bg-green-500 text-white shadow-md hover:bg-green-600"
+                        : "bg-white border border-slate-200 text-slate-700 hover:border-green-300 hover:text-green-600"
+                    }`}
                   >
-                    {availableOnly ? '🟢 Available Now' : '⭕ All Pros'}
+                    {availableOnly ? "🟢 Available Now" : "⭕ All Pros"}
                   </button>
                 </div>
 
-                {/* Emergency Button */}
+                {/* Post Job Button */}
                 <div>
-                  <button className="w-full px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-bold hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg">
-                    🚨 Emergency
-                  </button>
+                  <Link href="/post-job">
+                    <button className="w-full px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg">
+                      📝 Post Job
+                    </button>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -182,28 +177,34 @@ export default function SearchPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-slate-800">
-                  {loading ? 'Searching...' : `${filteredHandymen.length} Pros Found`}
+                  {loading
+                    ? "Searching..."
+                    : `${filteredHandymen.length} Pros Found`}
                 </h2>
-                <p className="text-slate-600">Highland Park • Available today</p>
+                <p className="text-slate-600">
+                  Highland Park • Available today
+                </p>
               </div>
-              
+
               {/* View Toggle */}
               <div className="flex bg-slate-100 rounded-xl p-1">
                 <button
-                  onClick={() => setViewMode('list')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${viewMode === 'list'
-                      ? 'bg-white text-orange-600 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-800'
-                    }`}
+                  onClick={() => setViewMode("list")}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                    viewMode === "list"
+                      ? "bg-white text-orange-600 shadow-sm"
+                      : "text-slate-600 hover:text-slate-800"
+                  }`}
                 >
                   📋 List
                 </button>
                 <button
-                  onClick={() => setViewMode('map')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${viewMode === 'map'
-                      ? 'bg-white text-orange-600 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-800'
-                    }`}
+                  onClick={() => setViewMode("map")}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                    viewMode === "map"
+                      ? "bg-white text-orange-600 shadow-sm"
+                      : "text-slate-600 hover:text-slate-800"
+                  }`}
                 >
                   🗺️ Map
                 </button>
@@ -215,7 +216,9 @@ export default function SearchPage() {
               {loading ? (
                 <div className="text-center py-12">
                   <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-slate-600">Finding the best pros in your area...</p>
+                  <p className="text-slate-600">
+                    Finding the best pros in your area...
+                  </p>
                 </div>
               ) : error ? (
                 <div className="text-center py-12">
@@ -232,12 +235,18 @@ export default function SearchPage() {
                 <div className="text-center py-12">
                   <div className="text-4xl mb-4">🔍</div>
                   <p className="text-slate-600 mb-2">No handymen found</p>
-                  <p className="text-slate-500">Try adjusting your filters or search terms</p>
+                  <p className="text-slate-500">
+                    Try adjusting your filters or search terms
+                  </p>
                 </div>
               ) : (
                 <AnimatePresence>
                   {filteredHandymen.map((handyman, index) => (
-                    <HandymanCard key={handyman.id} handyman={handyman} index={index} />
+                    <HandymanCard
+                      key={handyman.id}
+                      handyman={handyman}
+                      index={index}
+                    />
                   ))}
                 </AnimatePresence>
               )}
@@ -249,21 +258,31 @@ export default function SearchPage() {
             <div className="sticky top-8 space-y-6">
               {/* Quick Actions */}
               <div className="bg-white rounded-3xl shadow-lg border border-orange-100 p-6">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">🤳 Show Us What&apos;s Wrong</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">
+                  🤳 Show Us What&apos;s Wrong
+                </h3>
                 <div className="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center hover:border-orange-400 transition-all duration-200 cursor-pointer group">
-                  <div className="text-4xl mb-3 group-hover:scale-110 transition-transform duration-200">📸</div>
+                  <div className="text-4xl mb-3 group-hover:scale-110 transition-transform duration-200">
+                    📸
+                  </div>
                   <p className="font-semibold text-slate-700">Upload a Photo</p>
-                  <p className="text-sm text-slate-500 mt-1">AI will find the perfect pro</p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    AI will find the perfect pro
+                  </p>
                 </div>
               </div>
 
               {/* Community Stats */}
               <div className="bg-white rounded-3xl shadow-lg border border-orange-100 p-6">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">🏘️ Your Neighborhood</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">
+                  🏘️ Your Neighborhood
+                </h3>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-slate-600">Jobs this week</span>
-                    <span className="font-bold text-green-600">12 completed</span>
+                    <span className="font-bold text-green-600">
+                      12 completed
+                    </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-slate-600">Average rate</span>
@@ -275,8 +294,12 @@ export default function SearchPage() {
                   </div>
                   <div className="pt-2 border-t border-slate-100">
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-600">Your savings vs TaskRabbit</span>
-                      <span className="font-bold text-orange-600">~$25/job</span>
+                      <span className="text-slate-600">
+                        Your savings vs TaskRabbit
+                      </span>
+                      <span className="font-bold text-orange-600">
+                        ~$25/job
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -300,9 +323,14 @@ export default function SearchPage() {
   );
 }
 
-
-// Perfect Handyman Card Component
-function HandymanCard({ handyman, index }: { handyman: Handyman; index: number }) {
+// Handyman Card Component
+function HandymanCard({
+  handyman,
+  index,
+}: {
+  handyman: Handyman;
+  index: number;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
@@ -318,22 +346,27 @@ function HandymanCard({ handyman, index }: { handyman: Handyman; index: number }
             {/* Avatar */}
             <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-orange-600 rounded-2xl flex items-center justify-center flex-shrink-0">
               <span className="text-white font-bold text-xl">
-                {handyman.name.split(' ').map(n => n[0]).join('')}
+                {handyman.name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")}
               </span>
             </div>
-            
+
             {/* Info */}
             <div className="flex-1 min-w-0">
               {/* Name & Status */}
               <div className="flex flex-wrap items-center gap-3 mb-2">
-                <h3 className="text-xl font-bold text-slate-800">{handyman.name}</h3>
+                <h3 className="text-xl font-bold text-slate-800">
+                  {handyman.name}
+                </h3>
                 {handyman.isAvailable && (
                   <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
                     🟢 Available Now
                   </span>
                 )}
               </div>
-              
+
               {/* Stats Row */}
               <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600 mb-3">
                 <span className="flex items-center gap-1">
@@ -343,19 +376,21 @@ function HandymanCard({ handyman, index }: { handyman: Handyman; index: number }
                 </span>
                 <span className="flex items-center gap-1">
                   <span>📍</span>
-                  <span>{handyman.distance} mi • {handyman.neighborhood}</span>
+                  <span>
+                    {handyman.distance} mi • {handyman.neighborhood}
+                  </span>
                 </span>
                 <span className="flex items-center gap-1">
                   <span>⏱️</span>
                   <span>Responds in {handyman.responseTime}</span>
                 </span>
               </div>
-              
+
               {/* Bio */}
               <p className="text-slate-700 leading-relaxed mb-4">
                 {handyman.bio}
               </p>
-              
+
               {/* Services */}
               <div className="flex flex-wrap gap-2">
                 {handyman.services.map((service) => (
@@ -369,7 +404,7 @@ function HandymanCard({ handyman, index }: { handyman: Handyman; index: number }
               </div>
             </div>
           </div>
-          
+
           {/* Action Section */}
           <div className="lg:text-right flex-shrink-0">
             <div className="mb-4">
@@ -377,27 +412,33 @@ function HandymanCard({ handyman, index }: { handyman: Handyman; index: number }
                 ${handyman.hourlyRate}
                 <span className="text-lg font-normal text-slate-500">/hr</span>
               </div>
-              <div className="text-sm text-slate-500">
-                Fair local pricing
-              </div>
+              <div className="text-sm text-slate-500">Fair local pricing</div>
             </div>
-            
+
             <div className="flex lg:flex-col gap-2">
-              <Button 
-                size="lg"
-                className="flex-1 lg:w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
+              <Link
+                href={`/messages?handyman=${
+                  handyman.id
+                }&name=${encodeURIComponent(
+                  handyman.name
+                )}&service=General%20Inquiry`}
               >
-                💬 Contact Now
-              </Button>
+                <Button
+                  size="lg"
+                  className="flex-1 lg:w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
+                >
+                  💬 Contact Now
+                </Button>
+              </Link>
               <Link href={`/handyman/${handyman.id}`}>
-  <Button 
-    variant="outline" 
-    size="lg"
-    className="flex-1 lg:w-full border-2 border-slate-200 text-slate-700 hover:border-orange-300 hover:text-orange-600 font-semibold px-6 py-3 rounded-xl transition-all duration-200"
-  >
-    👤 View Profile
-  </Button>
-</Link>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="flex-1 lg:w-full border-2 border-slate-200 text-slate-700 hover:border-orange-300 hover:text-orange-600 font-semibold px-6 py-3 rounded-xl transition-all duration-200"
+                >
+                  👤 View Profile
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
