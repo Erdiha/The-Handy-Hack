@@ -36,6 +36,7 @@ export default function PostJobPage() {
     "General Repair",
     "Other",
   ];
+  
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -58,13 +59,22 @@ export default function PostJobPage() {
     setLoading(true);
 
     try {
-      // Here we'll add real job posting logic later
-      console.log("Posting job:", formData);
+      const response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
 
-      // Mock success - redirect to a success page or job listing
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 1000);
+      const data = await response.json();
+
+      if (data.success) {
+        // Success! Redirect to jobs page to see the posted job
+        router.push("/jobs?posted=true");
+      } else {
+        console.error("Failed to post job:", data.error);
+      }
     } catch (error) {
       console.error("Failed to post job:", error);
     } finally {
@@ -75,7 +85,7 @@ export default function PostJobPage() {
   return (
     <div className="min-h-[calc(100vh-5rem)] bg-orange-50">
       {/* Header */}
-      <div className="bg-white border-b border-orange-100">
+      <div className="bg-white border-b border-orange-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}

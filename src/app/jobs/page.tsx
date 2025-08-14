@@ -1,30 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
-
-interface Job {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  location: string;
-  budget: string;
-  budgetAmount?: string;
-  urgency: string;
-  postedBy: string;
-  postedDate: string;
-  responses: number;
-  photos?: string[];
-}
+import { Job } from "@/types/jobs";
 
 export default function JobsPage() {
   const { data: session } = useSession();
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
   const [selectedUrgency, setSelectedUrgency] = useState("All");
+  const [loading, setLoading] = useState(true);
+  const [jobs, setJobs] = useState<Job[]>([]);
+
+  useEffect(() => {
+    fetchJobs();
+  }, [selectedCategory, selectedUrgency]);
+
+  const fetchJobs = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedCategory !== "All Categories") {
+        params.append("category", selectedCategory);
+      }
+      if (selectedUrgency !== "All") {
+        params.append("urgency", selectedUrgency);
+      }
+
+      const response = await fetch(`/api/jobs?${params}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setJobs(data.jobs);
+      }
+    } catch (error) {
+      console.error("Error fetching jobs:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const categories = [
     "All Categories",
@@ -41,97 +57,26 @@ export default function JobsPage() {
     "General Repair",
   ];
 
-  // Mock job data - will be real data later
-  const jobs: Job[] = [
-    {
-      id: "1",
-      title: "Fix leaky kitchen faucet",
-      description:
-        "My kitchen faucet has been dripping for a week now. It seems to be coming from the base where it connects to the sink. I have basic tools but not sure how to fix it properly.",
-      category: "Plumbing",
-      location: "Highland Park",
-      budget: "hour",
-      budgetAmount: "75",
-      urgency: "week",
-      postedBy: "Sarah M.",
-      postedDate: "2 hours ago",
-      responses: 3,
-      photos: [],
-    },
-    {
-      id: "2",
-      title: "Install ceiling fan in bedroom",
-      description:
-        "I bought a ceiling fan from Home Depot and need someone to install it. The electrical box is already there, just need the fan mounted and wired. Fan comes with all hardware.",
-      category: "Electrical",
-      location: "Eagle Rock",
-      budget: "fixed",
-      budgetAmount: "150",
-      urgency: "flexible",
-      postedBy: "Mike D.",
-      postedDate: "5 hours ago",
-      responses: 1,
-      photos: [],
-    },
-    {
-      id: "3",
-      title: "Paint living room walls",
-      description:
-        "Looking to paint my living room (12x15 ft). Walls are currently white, want to change to light gray. I have the paint already, just need someone with experience to do a clean job.",
-      category: "Painting",
-      location: "Highland Park",
-      budget: "quote",
-      urgency: "flexible",
-      postedBy: "Jennifer L.",
-      postedDate: "1 day ago",
-      responses: 7,
-      photos: [],
-    },
-    {
-      id: "4",
-      title: "Emergency: Garage door won't open",
-      description:
-        "My garage door is completely stuck and won't open. My car is trapped inside and I need to get to work tomorrow. The opener makes noise but door doesn't move.",
-      category: "General Repair",
-      location: "Silverlake",
-      budget: "hour",
-      budgetAmount: "100",
-      urgency: "asap",
-      postedBy: "David K.",
-      postedDate: "30 minutes ago",
-      responses: 0,
-      photos: [],
-    },
-    {
-      id: "5",
-      title: "Assemble IKEA dining set",
-      description:
-        "I have a 6-piece IKEA dining set that needs assembly. Includes table and 4 chairs. All parts and tools are included. Should take 2-3 hours for someone experienced.",
-      category: "Furniture Assembly",
-      location: "Highland Park",
-      budget: "fixed",
-      budgetAmount: "120",
-      urgency: "week",
-      postedBy: "Amanda R.",
-      postedDate: "3 hours ago",
-      responses: 2,
-      photos: [],
-    },
-  ];
-
+  // Filter out jobs posted by current user AND apply other filters
   const filteredJobs = jobs.filter((job) => {
+    // Don't show user their own jobs
+    if (session?.user?.id && job.customerId === session.user.id) {
+      return false;
+    }
+
     const matchesCategory =
       selectedCategory === "All Categories" ||
       job.category === selectedCategory;
     const matchesUrgency =
       selectedUrgency === "All" || job.urgency === selectedUrgency;
+
     return matchesCategory && matchesUrgency;
   });
 
   return (
     <div className="min-h-[calc(100vh-5rem)] bg-orange-50">
       {/* Header */}
-      <div className="bg-white border-b border-orange-100">
+      <div className="bg-orange-50 border-b border-orange-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -203,24 +148,48 @@ export default function JobsPage() {
               </div>
             </div>
 
-            {/* Job Cards */}
-            <div className="space-y-6">
-              {filteredJobs.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="text-4xl mb-4">📝</div>
-                  <p className="text-slate-600 mb-2">
-                    No jobs match your filters
-                  </p>
-                  <p className="text-slate-500">
-                    Try adjusting your search criteria
-                  </p>
-                </div>
-              ) : (
-                filteredJobs.map((job, index) => (
-                  <JobCard key={job.id} job={job} index={index} />
-                ))
-              )}
-            </div>
+            {/* Loading State */}
+            {loading ? (
+              <div className="space-y-6">
+                {[...Array(3)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="bg-white rounded-3xl shadow-lg border border-slate-100 p-6"
+                  >
+                    <div className="animate-pulse">
+                      <div className="h-6 bg-slate-200 rounded mb-4 w-3/4"></div>
+                      <div className="h-4 bg-slate-200 rounded mb-2 w-1/2"></div>
+                      <div className="h-20 bg-slate-200 rounded mb-4"></div>
+                      <div className="h-10 bg-slate-200 rounded w-32"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Job Cards */
+              <div className="space-y-6">
+                {filteredJobs.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="text-4xl mb-4">🔍</div>
+                    <p className="text-slate-600 mb-2">
+                      No jobs match your filters
+                    </p>
+                    <p className="text-slate-500">
+                      Try adjusting your search criteria
+                    </p>
+                  </div>
+                ) : (
+                  filteredJobs.map((job, index) => (
+                    <JobCard
+                      key={job.id}
+                      job={job}
+                      index={index}
+                      currentUserId={session?.user?.id}
+                    />
+                  ))
+                )}
+              </div>
+            )}
           </div>
 
           {/* Sidebar */}
@@ -289,7 +258,15 @@ export default function JobsPage() {
 }
 
 // Job Card Component
-function JobCard({ job, index }: { job: Job; index: number }) {
+function JobCard({
+  job,
+  index,
+  currentUserId,
+}: {
+  job: Job;
+  index: number;
+  currentUserId?: string;
+}) {
   const getUrgencyColor = (urgency: string) => {
     switch (urgency) {
       case "asap":
@@ -322,6 +299,9 @@ function JobCard({ job, index }: { job: Job; index: number }) {
     return `$${job.budgetAmount} fixed`;
   };
 
+  // Check if this is the user's own job
+  const isOwnJob = currentUserId && job.customerId === currentUserId;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
@@ -342,6 +322,11 @@ function JobCard({ job, index }: { job: Job; index: number }) {
               >
                 {getUrgencyText(job.urgency)}
               </span>
+              {isOwnJob && (
+                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                  Your Job
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-4 text-sm text-slate-600 mb-3">
@@ -384,16 +369,29 @@ function JobCard({ job, index }: { job: Job; index: number }) {
             >
               View Details
             </Button>
-            {/* Replace the current Respond button with: */}
-            <Link
-              href={`/messages?job=${job.id}&customer=${encodeURIComponent(
-                job.postedBy
-              )}&title=${encodeURIComponent(job.title)}`}
-            >
-              <Button className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-semibold">
-                Respond
+
+            {/* Conditionally render Respond button */}
+            {isOwnJob ? (
+              <Button
+                disabled
+                className="bg-slate-300 text-slate-500 px-6 py-2 rounded-xl font-semibold cursor-not-allowed"
+                title="This is your own job posting"
+              >
+                Your Job
               </Button>
-            </Link>
+            ) : (
+              <Link
+                href={`/messages?job=${job.id}&customerId=${
+                  job.customerId
+                }&customer=${encodeURIComponent(
+                  job.postedBy
+                )}&title=${encodeURIComponent(job.title)}`}
+              >
+                <Button className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-semibold">
+                  Respond
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </div>

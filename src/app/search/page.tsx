@@ -5,8 +5,7 @@ import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
-import {Handyman} from '@/types/handyman'
-
+import { Handyman } from "@/types/handyman";
 
 export default function SearchPage() {
   const { data: session } = useSession();
@@ -49,13 +48,31 @@ export default function SearchPage() {
         params.append("availableOnly", "true");
       }
 
+      console.log("Fetching handymen with params:", params.toString());
+
       const response = await fetch(`/api/handymen?${params}`);
       const data = await response.json();
 
+      console.log("Handymen API response:", data);
+
       if (data.success) {
-        setHandymen(data.handymen);
+        // Validate that each handyman has a valid ID
+        const validHandymen = data.handymen.filter((handyman: Handyman) => {
+          if (
+            !handyman.id ||
+            handyman.id === "undefined" ||
+            handyman.id === "null"
+          ) {
+            console.warn("Invalid handyman ID found:", handyman);
+            return false;
+          }
+          return true;
+        });
+
+        setHandymen(validHandymen);
+        console.log(`Set ${validHandymen.length} valid handymen`);
       } else {
-        setError("Failed to load handymen");
+        setError(data.error || "Failed to load handymen");
       }
     } catch (error) {
       setError("Something went wrong");
@@ -96,7 +113,9 @@ export default function SearchPage() {
             <div className="text-center mb-8">
               <h1 className="text-3xl md:text-4xl font-bold text-slate-800 mb-8">
                 Find Your Perfect
-                <span className="block text-orange-600 md:text-5xl text-3xl mt-3">Neighborhood Pro</span>
+                <span className="block text-orange-600 md:text-5xl text-3xl mt-3">
+                  Neighborhood Pro
+                </span>
               </h1>
               <p className="text-xl text-slate-600 max-w-2xl mx-auto">
                 {session?.user ? `Hey ${session.user.name}! ` : ""}
@@ -246,6 +265,7 @@ export default function SearchPage() {
                       key={handyman.id}
                       handyman={handyman}
                       index={index}
+                      currentUserId={session?.user?.id}
                     />
                   ))}
                 </AnimatePresence>
@@ -327,10 +347,22 @@ export default function SearchPage() {
 function HandymanCard({
   handyman,
   index,
+  currentUserId,
 }: {
   handyman: Handyman;
   index: number;
+  currentUserId?: string;
 }) {
+  // Prevent users from contacting themselves
+  const isOwnProfile = currentUserId && handyman.id === currentUserId;
+
+  console.log("Rendering handyman card:", {
+    handymanId: handyman.id,
+    handymanName: handyman.name,
+    currentUserId,
+    isOwnProfile,
+  });
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
@@ -365,23 +397,30 @@ function HandymanCard({
                     🟢 Available Now
                   </span>
                 )}
+                {isOwnProfile && (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                    Your Profile
+                  </span>
+                )}
               </div>
 
               {/* Stats Row */}
               <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600 mb-3">
                 <span className="flex items-center gap-1">
                   <span className="text-yellow-500">⭐</span>
-                  <span className="font-semibold">{handyman.rating}</span>
+                  <span className="font-semibold">
+                    {handyman.rating.toFixed(1)}
+                  </span>
                   <span>({handyman.reviewCount} reviews)</span>
                 </span>
                 <span className="flex items-center gap-1">
                   <span>📍</span>
                   <span>
-                    {handyman.distance} mi • {handyman.neighborhood}
+                    {handyman.distance.toFixed(1)} mi • {handyman.neighborhood}
                   </span>
                 </span>
                 <span className="flex items-center gap-1">
-                  <span>⏱️</span>
+                  <span>⏰</span>
                   <span>Responds in {handyman.responseTime}</span>
                 </span>
               </div>
@@ -416,20 +455,32 @@ function HandymanCard({
             </div>
 
             <div className="flex lg:flex-col gap-2">
-              <Link
-                href={`/messages?handyman=${
-                  handyman.id
-                }&name=${encodeURIComponent(
-                  handyman.name
-                )}&service=General%20Inquiry`}
-              >
+              {isOwnProfile ? (
                 <Button
                   size="lg"
-                  className="flex-1 lg:w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
+                  disabled
+                  className="flex-1 lg:w-full bg-slate-300 text-slate-500 font-semibold px-6 py-3 rounded-xl cursor-not-allowed"
+                  title="This is your own profile"
                 >
-                  💬 Contact Now
+                  👤 Your Profile
                 </Button>
-              </Link>
+              ) : (
+                <Link
+                  href={`/messages?handyman=${
+                    handyman.id
+                  }&name=${encodeURIComponent(
+                    handyman.name
+                  )}&service=General%20Inquiry`}
+                >
+                  <Button
+                    size="lg"
+                    className="flex-1 lg:w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
+                  >
+                    💬 Contact Now
+                  </Button>
+                </Link>
+              )}
+
               <Link href={`/handyman/${handyman.id}`}>
                 <Button
                   variant="outline"

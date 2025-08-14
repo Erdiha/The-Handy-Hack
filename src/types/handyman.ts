@@ -1,50 +1,47 @@
-export interface HandymanProfile {
-  id: number;
+
+export interface Handyman {
+  id: string;
   name: string;
   bio: string;
-  hourlyRate: string;
+  services: string[];
+  hourlyRate: number;
+  rating: number;
+  reviewCount: number;
+  distance: number;
   neighborhood: string;
-  phone: string;
-  email: string;
+  responseTime: string;
+  isAvailable: boolean;
+}
+
+export interface HandymanProfile extends Handyman {
+  email?: string;
+  phone?: string;
   isVerified: boolean;
   joinedDate: string;
-  services: Array<{
-    name: string;
-    description: string;
-    basePrice: string;
-  }>;
-  availability: {
-    isAvailable: boolean;
-    responseTime: string;
-    workingHours: string;
-    weekendAvailable: boolean;
-  };
   stats: {
     rating: number;
     reviewCount: number;
     completedJobs: number;
-    responseRate: string;
-    onTimeRate: string;
   };
-  reviews: Array<{
-    id: number;
-    customerName: string;
-    rating: number;
-    comment: string;
-    date: string;
-    serviceType: string;
-  }>;
+  availability: {
+    responseTime: string;
+    workingHours: string;
+    weekendAvailable: boolean;
+  };
+  reviews: Review[];
 }
-export interface Handyman {
-  id: number;
-  name: string;
-  bio: string;
-  hourlyRate: string;
-  neighborhood: string;
-  services: string[];
-  isAvailable: boolean;
-  distance: number;
+
+export interface Review {
+  id: string;
+  customerName: string;
   rating: number;
-  reviewCount: number;
-  responseTime: string;
+  comment: string;
+  date: string;
+  serviceType: string;
+}
+
+export interface Service {
+  name: string;
+  description: string;
+  basePrice: number;
 }
