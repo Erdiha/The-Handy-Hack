@@ -1,193 +1,77 @@
-// /pages/api/socket.ts - Clean server without 'any' types
-import { NextApiRequest } from 'next';
-import { Server as ServerIO } from 'socket.io';
-import { 
-  NextApiResponseServerIO,
-  CustomSocket,
-  SocketMessage,
-  ClientToServerEvents,
-  ServerToClientEvents,
-  SocketData
-} from '@/types/socket';
+// types/socket.ts - Clean types with no "any"
+import { NextApiResponse } from 'next';
+import { Server as NetServer } from 'http';
+import { Server as ServerIO, Socket } from 'socket.io';
 
-// In-memory stores with proper typing
-const activeUsers = new Map<string, string>(); // userId -> socketId
-const userSockets = new Map<string, string>(); // socketId -> userId
-const typingUsers = new Map<string, Set<string>>(); // conversationId -> Set of userIds
-const userNames = new Map<string, string>(); // userId -> userName
+// Message interface
+export interface SocketMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  timestamp: string;
+  isRead: boolean;
+  tempId?: string;
+}
 
-const SocketHandler = (req: NextApiRequest, res: NextApiResponseServerIO) => {
-  if (res.socket.server.io) {
-    console.log('✅ Socket.io already running');
-    res.end();
-    return;
-  }
+// User online status
+export interface OnlineUser {
+  userId: string;
+  userName: string;
+  timestamp: Date;
+}
 
-  console.log('🚀 Starting Socket.io server...');
-  
-  const io = new ServerIO<ClientToServerEvents, ServerToClientEvents, never, SocketData>(
-    res.socket.server,
-    {
-      path: '/api/socket',
-      addTrailingSlash: false,
-      cors: {
-        origin: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        methods: ["GET", "POST"],
-        credentials: true
-      }
-    }
-  );
+// Typing indicator
+export interface TypingIndicator {
+  userId: string;
+  userName: string;
+  conversationId: string;
+}
 
-  io.on('connection', (socket: CustomSocket) => {
-    console.log(`🔌 Socket connected: ${socket.id}`);
+// Server to Client Events
+export interface ServerToClientEvents {
+  new_message: (message: SocketMessage) => void;
+  message_error: (data: { tempId: string; error: string }) => void;
+  user_online: (data: OnlineUser) => void;
+  user_offline: (data: { userId: string; timestamp: Date }) => void;
+  online_users: (userIds: string[]) => void;
+  user_started_typing: (data: TypingIndicator) => void;
+  user_stopped_typing: (data: { userId: string; conversationId: string }) => void;
+}
 
-    // Authentication - properly typed
-    socket.on('authenticate', (data: { userId: string; userName: string }) => {
-      socket.userId = data.userId;
-      socket.userName = data.userName;
-      
-      activeUsers.set(data.userId, socket.id);
-      userSockets.set(socket.id, data.userId);
-      userNames.set(data.userId, data.userName);
+// Client to Server Events
+export interface ClientToServerEvents {
+  authenticate: (data: { userId: string; userName: string }) => void;
+  join_conversation: (conversationId: string) => void;
+  leave_conversation: (conversationId: string) => void;
+  send_message: (data: {
+    conversationId: string;
+    content: string;
+    tempId: string;
+    senderName: string;
+  }) => void;
+  typing_start: (data: { conversationId: string }) => void;
+  typing_stop: (data: { conversationId: string }) => void;
+}
 
-      socket.join(`user_${data.userId}`);
-      
-      const onlineUserIds = Array.from(activeUsers.keys());
-      socket.emit('online_users', onlineUserIds);
-      
-      socket.broadcast.emit('user_online', { 
-        userId: data.userId,
-        userName: data.userName,
-        timestamp: new Date()
-      });
+// Socket data stored on socket instance
+export interface SocketData {
+  userId?: string;
+  userName?: string;
+}
 
-      console.log(`✅ User authenticated: ${data.userName}`);
-    });
+// Custom socket with user properties
+export interface CustomSocket extends Socket<ClientToServerEvents, ServerToClientEvents, never, SocketData> {
+  userId?: string;
+  userName?: string;
+}
 
-    // Join conversation - properly typed
-    socket.on('join_conversation', (conversationId: string) => {
-      socket.join(`conversation_${conversationId}`);
-      console.log(`🏠 User ${socket.userId} joined conversation: ${conversationId}`);
-    });
-
-    // Leave conversation - properly typed
-    socket.on('leave_conversation', (conversationId: string) => {
-      socket.leave(`conversation_${conversationId}`);
-      
-      if (typingUsers.has(conversationId) && socket.userId) {
-        typingUsers.get(conversationId)?.delete(socket.userId);
-        if (typingUsers.get(conversationId)?.size === 0) {
-          typingUsers.delete(conversationId);
-        }
-      }
-      
-      console.log(`🚪 User ${socket.userId} left conversation: ${conversationId}`);
-    });
-
-    // Send message - properly typed with tempId
-    socket.on('send_message', (data: {
-      conversationId: string;
-      content: string;
-      tempId: string; // ✅ Required, not optional
-      senderName: string;
-    }) => {
-      if (!socket.userId) {
-        socket.emit('message_error', { 
-          tempId: data.tempId, 
-          error: 'Not authenticated' 
-        });
-        return;
-      }
-
-      // Clear typing indicator
-      if (typingUsers.has(data.conversationId)) {
-        typingUsers.get(data.conversationId)?.delete(socket.userId);
-      }
-
-      // Create properly typed message
-      const message: SocketMessage = {
-        id: `msg_${Date.now()}_${socket.id.substring(0, 8)}`,
-        conversationId: data.conversationId,
-        senderId: socket.userId,
-        senderName: data.senderName,
-        content: data.content.trim(),
-        timestamp: new Date().toISOString(),
-        isRead: false,
-        tempId: data.tempId // ✅ Include tempId for confirmation
-      };
-
-      // Broadcast to conversation
-      io.to(`conversation_${data.conversationId}`).emit('new_message', message);
-      
-      console.log(`✅ Message sent with tempId: ${data.tempId}`);
-    });
-
-    // Typing indicators - properly typed
-    socket.on('typing_start', (data: { conversationId: string }) => {
-      if (!socket.userId || !socket.userName) return;
-
-      if (!typingUsers.has(data.conversationId)) {
-        typingUsers.set(data.conversationId, new Set());
-      }
-      typingUsers.get(data.conversationId)?.add(socket.userId);
-
-      socket.to(`conversation_${data.conversationId}`).emit('user_started_typing', {
-        userId: socket.userId,
-        userName: socket.userName,
-        conversationId: data.conversationId
-      });
-    });
-
-    socket.on('typing_stop', (data: { conversationId: string }) => {
-      if (!socket.userId) return;
-
-      if (typingUsers.has(data.conversationId)) {
-        typingUsers.get(data.conversationId)?.delete(socket.userId);
-        if (typingUsers.get(data.conversationId)?.size === 0) {
-          typingUsers.delete(data.conversationId);
-        }
-      }
-
-      socket.to(`conversation_${data.conversationId}`).emit('user_stopped_typing', {
-        userId: socket.userId,
-        conversationId: data.conversationId
-      });
-    });
-
-    // Disconnect - properly typed
-    socket.on('disconnect', (reason: string) => {
-      console.log(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
-      
-      if (socket.userId) {
-        activeUsers.delete(socket.userId);
-        userSockets.delete(socket.id);
-        userNames.delete(socket.userId);
-
-        // Clean up typing indicators
-        for (const [conversationId, users] of typingUsers.entries()) {
-          if (users.has(socket.userId)) {
-            users.delete(socket.userId);
-            socket.to(`conversation_${conversationId}`).emit('user_stopped_typing', {
-              userId: socket.userId,
-              conversationId
-            });
-          }
-          if (users.size === 0) {
-            typingUsers.delete(conversationId);
-          }
-        }
-
-        socket.broadcast.emit('user_offline', { 
-          userId: socket.userId,
-          timestamp: new Date()
-        });
-      }
-    });
-  });
-
-  res.socket.server.io = io;
-  console.log('✅ Socket.io server initialized');
-  res.end();
+// API Response with Socket.io
+export type NextApiResponseServerIO = NextApiResponse & {
+  socket: {
+    server: NetServer & {
+      io: ServerIO<ClientToServerEvents, ServerToClientEvents, never, SocketData>;
+    };
+  };
 };
-
-export default SocketHandler;

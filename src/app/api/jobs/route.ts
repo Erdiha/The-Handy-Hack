@@ -7,7 +7,8 @@ import { withAuth, AuthenticatedRequest } from '@/lib/security';
 export const POST = withAuth(async (request: AuthenticatedRequest) => {
   try {
     const body = await request.json();
-    const { title, description, category, urgency, budget, budgetAmount, location } = body;
+console.log("PHOTOS RECEIVED:", body.photos); // ADD THIS
+const { title, description, category, urgency, budget, budgetAmount, location, photos } = body;
 
     // Validate required fields
     if (!title || !description || !category || !urgency || !budget || !location) {
@@ -17,19 +18,19 @@ export const POST = withAuth(async (request: AuthenticatedRequest) => {
       );
     }
 
-    // Create job in database
-    const newJob = await db.insert(jobs).values({
-      title,
-      description,
-      category,
-      urgency,
-      budget,
-      budgetAmount: budgetAmount ? budgetAmount.toString() : null,
-      location,
-      postedBy: parseInt(request.user!.id),
-      status: 'open'
-    }).returning();
+   const newJob = await db.insert(jobs).values({
+  title,
+  description,
+  category,
+  urgency,
+  budget,
+  budgetAmount: budgetAmount ? budgetAmount.toString() : null,
+     location,
+    photos: JSON.stringify(photos || []), // ADD THIS
 
+  postedBy: parseInt(request.user!.id),
+  status: 'open'
+}).returning();
     return NextResponse.json({
       success: true,
       job: newJob[0],
@@ -64,7 +65,8 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
       location: jobs.location,
       status: jobs.status,
       createdAt: jobs.createdAt,
-      postedBy: jobs.postedBy
+      postedBy: jobs.postedBy,
+      photos: jobs.photos 
     }).from(jobs);
 
     // Execute query

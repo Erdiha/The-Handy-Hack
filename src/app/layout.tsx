@@ -3,7 +3,7 @@ import { Inter } from 'next/font/google'
 import { Navbar } from '@/components/layout/Navbar'
 import { AuthSessionProvider } from '@/components/providers/SessionProviders'
 import './globals.css'
-
+import { NotificationProvider } from "@/contexts/NotificationContext";
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
@@ -20,10 +20,12 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthSessionProvider>
-          <Navbar />
-          {children}
+          <NotificationProvider>
+            <Navbar />
+            {children}
+          </NotificationProvider>
         </AuthSessionProvider>
       </body>
     </html>
-  )
+  );
 }

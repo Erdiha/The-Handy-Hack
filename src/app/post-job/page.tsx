@@ -11,16 +11,37 @@ export default function PostJobPage() {
   const { data: session } = useSession();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    category: "",
-    urgency: "flexible",
-    budget: "hour",
-    budgetAmount: "",
-    location: "",
-    photos: [] as File[],
-  });
+  const [uploading, setUploading] = useState(false);
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]); // Store URLs instead of Files
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
+  const validateTitle = (title: string): string => {
+    if (!title.trim()) return "Job title is required";
+    if (title.trim().length < 5)
+      return "Job title must be at least 5 characters";
+    if (title.trim().length > 100)
+      return "Job title must be less than 100 characters";
+    return ""; // No error
+  };
+  const validateDescription = (description: string): string => {
+    if (!description.trim()) return "Job description is required";
+    if (description.trim().length < 20)
+      return "Description must be at least 20 characters";
+    if (description.trim().length > 1000)
+      return "Description must be less than 1000 characters";
+    return "";
+  };
+
+const [formData, setFormData] = useState({
+  title: "",
+  description: "",
+  category: "",
+  urgency: "flexible",
+  budget: "hour",
+  budgetAmount: "",
+  location: "",
+  photos: [] as string[], // FIXED: Changed from File[] to string[]
+});
 
   const categories = [
     "Plumbing",
@@ -36,15 +57,66 @@ export default function PostJobPage() {
     "General Repair",
     "Other",
   ];
-  
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Replace your existing photo upload code with this:
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setFormData((prev) => ({ ...prev, photos: [...prev.photos, ...files] }));
+    if (files.length === 0) return;
+
+    setUploading(true);
+
+    try {
+      console.log("Starting upload of", files.length, "files");
+
+      const uploadedUrls: string[] = [];
+
+      // Upload files one by one for better debugging
+      for (const file of files) {
+        const timestamp = Date.now();
+        const filename = `job-photos/${timestamp}-${file.name}`;
+
+        console.log("Uploading:", filename);
+
+        const response = await fetch(
+          `/api/upload?filename=${encodeURIComponent(filename)}`,
+          {
+            method: "POST",
+            body: file,
+          }
+        );
+
+        const result = await response.json();
+        console.log("Upload result:", result);
+
+        if (!result.success) {
+          throw new Error(result.error || "Upload failed");
+        }
+
+        uploadedUrls.push(result.url);
+      }
+
+      console.log("All uploads complete. URLs:", uploadedUrls);
+
+      // Update formData with new photo URLs
+      setFormData((prev) => {
+        const newData = {
+          ...prev,
+          photos: [...prev.photos, ...uploadedUrls],
+        };
+        console.log("Updated formData.photos:", newData.photos);
+        return newData;
+      });
+    } catch (error) {
+      console.error("Upload failed:", error);
+      alert("Failed to upload photos. Please try again.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const removePhoto = (index: number) => {
@@ -85,7 +157,7 @@ export default function PostJobPage() {
   return (
     <div className="min-h-[calc(100vh-5rem)] bg-orange-50">
       {/* Header */}
-      <div className="bg-white border-b border-orange-50">
+      <div className="bg-orange-50 border-b border-orange-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -114,10 +186,11 @@ export default function PostJobPage() {
         >
           <form
             onSubmit={handleSubmit}
-            className="bg-white rounded-3xl shadow-xl border border-orange-100 overflow-hidden"
+            className="bg-orange-50 rounded-3xl shadow-xl border border-orange-100 overflow-hidden"
           >
             <div className="p-8 space-y-8">
-              {/* Job Title */}
+              {/* Job Title - Updated with Validation */}
+              {/* Job Title - Clean Validation */}
               <div>
                 <label className="block text-lg font-semibold text-slate-800 mb-3">
                   What do you need done?
@@ -125,11 +198,28 @@ export default function PostJobPage() {
                 <input
                   type="text"
                   value={formData.title}
-                  onChange={(e) => handleInputChange("title", e.target.value)}
+                  onChange={(e) => {
+                    handleInputChange("title", e.target.value);
+                    // Clear error when user starts typing
+                    if (errors.title) {
+                      setErrors((prev) => ({ ...prev, title: "" }));
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const error = validateTitle(e.target.value);
+                    setErrors((prev) => ({ ...prev, title: error }));
+                  }}
                   placeholder="e.g., Fix leaky kitchen faucet, Install ceiling fan, Paint living room"
-                  className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
+                  className={`w-full px-4 py-4 text-lg border bg-white rounded-2xl focus:ring-2 focus:ring-orange-500 outline-none transition-all duration-200 ${
+                    errors.title
+                      ? "border-red-500 focus:border-red-500"
+                      : "border-slate-200 focus:border-orange-500"
+                  }`}
                   required
                 />
+                {errors.title && (
+                  <p className="mt-2 text-sm text-red-600">⚠️ {errors.title}</p>
+                )}
               </div>
 
               {/* Category & Urgency */}
@@ -164,7 +254,7 @@ export default function PostJobPage() {
                     onChange={(e) =>
                       handleInputChange("urgency", e.target.value)
                     }
-                    className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 bg-white"
+                    className="w-full px-4 bg-white py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 "
                   >
                     <option value="asap">ASAP (Today/Tomorrow)</option>
                     <option value="week">This week</option>
@@ -174,21 +264,52 @@ export default function PostJobPage() {
                 </div>
               </div>
 
-              {/* Description */}
+              {/* Description - With Validation */}
               <div>
                 <label className="block text-lg font-semibold text-slate-800 mb-3">
                   Describe the job in detail
                 </label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) =>
-                    handleInputChange("description", e.target.value)
-                  }
+                  onChange={(e) => {
+                    handleInputChange("description", e.target.value);
+                    // Clear error when user starts typing
+                    if (errors.description) {
+                      setErrors((prev) => ({ ...prev, description: "" }));
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const error = validateDescription(e.target.value);
+                    setErrors((prev) => ({ ...prev, description: error }));
+                  }}
                   rows={5}
                   placeholder="Be specific about what needs to be done, any materials required, access to the area, etc. The more details you provide, the better quotes you'll receive."
-                  className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 resize-none"
+                  className={`w-full px-4 py-4 text-lg border bg-white rounded-2xl focus:ring-2 focus:ring-orange-500 outline-none transition-all duration-200 resize-none ${
+                    errors.description
+                      ? "border-red-500 focus:border-red-500"
+                      : "border-slate-200 focus:border-orange-500"
+                  }`}
                   required
                 />
+                {errors.description && (
+                  <p className="mt-2 text-sm text-red-600">
+                    ⚠️ {errors.description}
+                  </p>
+                )}
+                <div className="flex justify-between mt-1">
+                  <p className="text-xs text-slate-500">
+                    Include materials, access details, specific requirements
+                  </p>
+                  <p
+                    className={`text-xs ${
+                      formData.description.length > 900
+                        ? "text-red-500"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {formData.description.length}/1000 characters
+                  </p>
+                </div>
               </div>
 
               {/* Budget */}
@@ -202,7 +323,8 @@ export default function PostJobPage() {
                     onChange={(e) =>
                       handleInputChange("budget", e.target.value)
                     }
-                    className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 bg-white"
+                    className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 
+                    bg-white"
                   >
                     <option value="hour">Hourly rate</option>
                     <option value="fixed">Fixed price</option>
@@ -221,7 +343,7 @@ export default function PostJobPage() {
                           handleInputChange("budgetAmount", e.target.value)
                         }
                         placeholder={formData.budget === "hour" ? "75" : "200"}
-                        className="w-full pl-8 pr-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
+                        className="w-full pl-8 pr-4 py-4 text-lg border bg-white border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
                       />
                     </div>
                   )}
@@ -240,19 +362,25 @@ export default function PostJobPage() {
                     handleInputChange("location", e.target.value)
                   }
                   placeholder="Your address or neighborhood"
-                  className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
+                  className="w-full px-4 py-4 text-lg border border-slate-200 bg-white rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
                   required
                 />
               </div>
 
-              {/* Photo Upload */}
+              {/* Photo Upload - COMPLETE REPLACEMENT */}
               <div>
                 <label className="block text-lg font-semibold text-slate-800 mb-3">
                   Photos (Optional)
                 </label>
                 <div className="space-y-4">
                   {/* Upload Area */}
-                  <div className="border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center hover:border-orange-400 transition-all duration-200 cursor-pointer group">
+                  <div
+                    className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-200 cursor-pointer group ${
+                      uploading
+                        ? "border-orange-400 bg-orange-50"
+                        : "border-slate-300 hover:border-orange-400 hover:bg-orange-50"
+                    }`}
+                  >
                     <input
                       type="file"
                       multiple
@@ -260,41 +388,72 @@ export default function PostJobPage() {
                       onChange={handlePhotoUpload}
                       className="hidden"
                       id="photo-upload"
+                      disabled={uploading}
                     />
-                    <label htmlFor="photo-upload" className="cursor-pointer">
-                      <div className="text-5xl mb-4 group-hover:scale-110 transition-transform duration-200">
-                        📸
+                    <label
+                      htmlFor="photo-upload"
+                      className={
+                        uploading ? "cursor-not-allowed" : "cursor-pointer"
+                      }
+                    >
+                      <div
+                        className={`text-5xl mb-4 transition-transform duration-200 ${
+                          uploading ? "animate-pulse" : "group-hover:scale-110"
+                        }`}
+                      >
+                        {uploading ? "⏳" : "📸"}
                       </div>
                       <p className="font-semibold text-slate-700 mb-2">
-                        Add photos to help pros understand your job
+                        {uploading
+                          ? "Uploading photos..."
+                          : "Add photos to help pros understand your job"}
                       </p>
                       <p className="text-sm text-slate-500">
-                        Click to upload or drag and drop
+                        {uploading
+                          ? "Please wait"
+                          : "Click to upload or drag and drop"}
                       </p>
                     </label>
                   </div>
 
                   {/* Photo Preview */}
                   {formData.photos.length > 0 && (
-                    <div className="grid grid-cols-4 gap-4">
-                      {formData.photos.map((photo, index) => (
-                        <div key={index} className="relative group">
-                          <Image
-                            src={URL.createObjectURL(photo)}
-                            alt={`Upload ${index + 1}`}
-                            width={96}
-                            height={96}
-                            className="w-full h-24 object-cover rounded-xl border border-slate-200"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(index)}
-                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm hover:bg-red-600 transition-colors duration-200"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
+                    <div>
+                      <p className="text-sm text-slate-600 mb-3">
+                        {formData.photos.length} photo(s) uploaded
+                      </p>
+                      <div className="grid grid-cols-4 gap-4">
+                        {formData.photos.map((photoUrl, index) => (
+                          <div key={index} className="relative group">
+                            <Image
+                              src={photoUrl}
+                              alt={`Upload ${index + 1}`}
+                              width={96}
+                              height={96}
+                              className="w-full h-24 object-cover rounded-xl border border-slate-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removePhoto(index)}
+                              className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm hover:bg-red-600 transition-colors duration-200"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Upload Status */}
+                  {uploading && (
+                    <div className="text-center py-4">
+                      <div className="text-orange-600 font-medium">
+                        Uploading photos...
+                      </div>
+                      <div className="w-full bg-orange-200 rounded-full h-2 mt-2">
+                        <div className="bg-orange-500 h-2 rounded-full animate-pulse w-1/2"></div>
+                      </div>
                     </div>
                   )}
                 </div>

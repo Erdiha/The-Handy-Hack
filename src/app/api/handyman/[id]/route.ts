@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { users, handymanProfiles, neighborhoods } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
+import { users, handymanProfiles, neighborhoods, handymanServices, reviews } from '@/lib/schema';
+import { eq, desc, avg, count } from 'drizzle-orm';
 
 export async function GET(
   request: Request,
@@ -17,7 +17,7 @@ export async function GET(
       );
     }
 
-    // Fetch handyman with profile and neighborhood data
+    // Get handyman basic info
     const handyman = await db
       .select({
         id: users.id,
@@ -44,7 +44,70 @@ export async function GET(
       );
     }
 
-    // Transform data for frontend
+    // Get services
+    const services = await db
+      .select({
+        name: handymanServices.serviceName,
+        description: handymanServices.description,
+        basePrice: handymanServices.basePrice,
+      })
+      .from(handymanServices)
+      .where(eq(handymanServices.handymanId, handymanId));
+
+    // Get review stats
+    const reviewStats = await db
+      .select({
+        avgRating: avg(reviews.rating),
+        reviewCount: count(reviews.id),
+      })
+      .from(reviews)
+      .where(eq(reviews.handymanId, handymanId));
+
+    // Get actual reviews with customer names
+    const reviewsData = await db
+      .select({
+        id: reviews.id,
+        rating: reviews.rating,
+        comment: reviews.comment,
+        serviceType: reviews.serviceType,
+        createdAt: reviews.createdAt,
+        customerName: users.name,
+      })
+      .from(reviews)
+      .innerJoin(users, eq(reviews.customerId, users.id))
+      .where(eq(reviews.handymanId, handymanId))
+      .orderBy(desc(reviews.createdAt))
+      .limit(10);
+
+    // Calculate stats
+    const rating = reviewStats[0]?.avgRating ? parseFloat(reviewStats[0].avgRating) : 0;
+    const reviewCount = reviewStats[0]?.reviewCount || 0;
+    const completedJobs = Math.max(reviewCount * 1.5, 5); // Estimate based on reviews
+
+    // Format reviews
+    const formattedReviews = reviewsData.map(review => ({
+      id: review.id,
+      customerName: review.customerName.split(' ')[0] + ' ' + review.customerName.split(' ')[1]?.charAt(0) + '.', // "John D."
+      rating: review.rating,
+      comment: review.comment || '',
+      date: getRelativeTime(review.createdAt),
+      serviceType: review.serviceType || 'General Service'
+    }));
+
+    // Transform services
+    const transformedServices = services.length > 0 ? services.map(service => ({
+      name: service.name,
+      description: service.description || 'Professional service with attention to detail',
+      basePrice: service.basePrice || handyman[0].hourlyRate || '50'
+    })) : [
+      // Default services if none in database
+      {
+        name: 'General Repairs',
+        description: 'Fixing things around the house, small repairs, maintenance',
+        basePrice: handyman[0].hourlyRate || '50'
+      }
+    ];
+
     const profileData = {
       id: handyman[0].id,
       name: handyman[0].name,
@@ -56,24 +119,7 @@ export async function GET(
       isVerified: handyman[0].isVerified || false,
       joinedDate: handyman[0].createdAt,
 
-      // Mock data for now - we'll make these dynamic later
-      services: [
-        {
-          name: 'General Repairs',
-          description: 'Fixing things around the house, small repairs, maintenance',
-          basePrice: handyman[0].hourlyRate || '50'
-        },
-        {
-          name: 'Furniture Assembly',
-          description: 'IKEA, Amazon purchases, custom furniture setup',
-          basePrice: '45'
-        },
-        {
-          name: 'Maintenance',
-          description: 'Regular home maintenance, seasonal prep, inspections',
-          basePrice: handyman[0].hourlyRate || '50'
-        }
-      ],
+      services: transformedServices,
 
       availability: {
         isAvailable: true,
@@ -83,40 +129,14 @@ export async function GET(
       },
 
       stats: {
-        rating: 4.8,
-        reviewCount: 42,
-        completedJobs: 127,
+        rating: Math.round(rating * 10) / 10,
+        reviewCount,
+        completedJobs,
         responseRate: '98%',
         onTimeRate: '95%'
       },
 
-      // Mock reviews - we'll make these real later
-      reviews: [
-        {
-          id: 1,
-          customerName: 'Sarah M.',
-          rating: 5,
-          comment: 'Mike did an amazing job fixing our leaky faucet. Fast, professional, and reasonably priced!',
-          date: '2 weeks ago',
-          serviceType: 'Plumbing'
-        },
-        {
-          id: 2,
-          customerName: 'David L.',
-          rating: 5,
-          comment: 'Great work assembling our new dining room set. Would definitely hire again.',
-          date: '1 month ago',
-          serviceType: 'Furniture Assembly'
-        },
-        {
-          id: 3,
-          customerName: 'Maria G.',
-          rating: 4,
-          comment: 'Very reliable and knows his stuff. Fixed several issues around the house.',
-          date: '2 months ago',
-          serviceType: 'General Repairs'
-        }
-      ]
+      reviews: formattedReviews
     };
 
     return NextResponse.json({
@@ -130,5 +150,29 @@ export async function GET(
       { error: 'Failed to fetch handyman profile' },
       { status: 500 }
     );
+  }
+}
+
+// Helper function
+function getRelativeTime(date: Date): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  
+  const minutes = Math.floor(diff / (1000 * 60));
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const weeks = Math.floor(days / 7);
+  const months = Math.floor(days / 30);
+  
+  if (minutes < 60) {
+    return minutes <= 1 ? '1 minute ago' : `${minutes} minutes ago`;
+  } else if (hours < 24) {
+    return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  } else if (days < 7) {
+    return days === 1 ? '1 day ago' : `${days} days ago`;
+  } else if (weeks < 4) {
+    return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+  } else {
+    return months === 1 ? '1 month ago' : `${months} months ago`;
   }
 }

@@ -1,148 +1,115 @@
-// scripts/seed-handymen.ts
-import dotenv from 'dotenv';
-import path from 'path';
+// Replace your /api/handymen/route.ts with this
 
-// Load .env.local properly
-dotenv.config({ path: path.join(process.cwd(), '.env.local') });
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
-import { users, handymanProfiles, neighborhoods } from '../src/lib/schema';
-import bcrypt from 'bcryptjs';
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { users, handymanProfiles, neighborhoods, handymanServices, reviews } from '@/lib/schema';
+import { eq, avg, count, sql } from 'drizzle-orm';
 
-// Initialize DB connection
-const sql = neon(process.env.DATABASE_URL!);
-const db = drizzle(sql);
-
-const SEED_DATA = {
-  neighborhoods: [
-    { name: 'Highland Park', slug: 'highland-park', city: 'Los Angeles', state: 'CA' },
-    { name: 'Eagle Rock', slug: 'eagle-rock', city: 'Los Angeles', state: 'CA' },
-    { name: 'Silverlake', slug: 'silverlake', city: 'Los Angeles', state: 'CA' },
-  ],
-
-  handymen: [
-    {
-      name: 'Mike Rodriguez',
-      email: 'mike.rodriguez@email.com',
-      phone: '(323) 555-0123',
-      bio: 'Local plumber with 8+ years experience. Specializing in kitchen and bathroom repairs, leak detection, and emergency fixes. Available weekends!',
-      hourlyRate: '75.00',
-      neighborhood: 'Highland Park',
-      isVerified: true
-    },
-    {
-      name: 'Sarah Chen',
-      email: 'sarah.chen@email.com', 
-      phone: '(323) 555-0124',
-      bio: 'Professional painter and decorator. Expert in interior/exterior painting, color consultation, and drywall repair. Eco-friendly materials available.',
-      hourlyRate: '65.00',
-      neighborhood: 'Highland Park',
-      isVerified: true
-    },
-    {
-      name: 'Carlos Martinez',
-      email: 'carlos.martinez@email.com',
-      phone: '(323) 555-0125', 
-      bio: 'Experienced electrician serving Highland Park for 10+ years. Licensed for all electrical work including panel upgrades, outlet installation, and lighting.',
-      hourlyRate: '85.00',
-      neighborhood: 'Highland Park',
-      isVerified: true
-    },
-    {
-      name: 'Amanda Johnson',
-      email: 'amanda.j@email.com',
-      phone: '(323) 555-0126',
-      bio: 'Furniture assembly specialist and handywoman. IKEA certified, tool-equipped, and great with complex builds. Same-day service available.',
-      hourlyRate: '55.00', 
-      neighborhood: 'Eagle Rock',
-      isVerified: false
-    },
-    {
-      name: 'David Kim',
-      email: 'david.kim@email.com',
-      phone: '(323) 555-0127',
-      bio: 'General contractor and carpenter. Kitchen remodels, custom shelving, door installation, and home repairs. Licensed and insured.',
-      hourlyRate: '90.00',
-      neighborhood: 'Silverlake', 
-      isVerified: true
-    },
-    {
-      name: 'Lisa Thompson',
-      email: 'lisa.t@email.com',
-      phone: '(323) 555-0128',
-      bio: 'Home maintenance expert specializing in seasonal prep, gutter cleaning, pressure washing, and general upkeep. Reliable and thorough.',
-      hourlyRate: '60.00',
-      neighborhood: 'Highland Park',
-      isVerified: true
-    }
-  ]
-};
-
-async function seedDatabase() {
+export async function GET(request: Request) {
   try {
-    console.log('🌱 Starting database seed...');
+    const { searchParams } = new URL(request.url);
+    const service = searchParams.get('service');
+    const availableOnly = searchParams.get('availableOnly') === 'true';
 
-    // 1. Check/Insert neighborhoods
-    console.log('📍 Checking neighborhoods...');
-    let allNeighborhoods = await db.select().from(neighborhoods);
-    
-    if (allNeighborhoods.length === 0) {
-      console.log('📍 Adding neighborhoods...');
-      allNeighborhoods = await db.insert(neighborhoods)
-        .values(SEED_DATA.neighborhoods)
-        .returning();
-    } else {
-      console.log(`✅ Found ${allNeighborhoods.length} existing neighborhoods`);
+    console.log('Fetching handymen with filters:', { service, availableOnly });
+
+    // Get handymen with their profiles and neighborhoods
+    const handymenData = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        bio: handymanProfiles.bio,
+        hourlyRate: handymanProfiles.hourlyRate,
+        isVerified: handymanProfiles.isVerified,
+        neighborhoodName: neighborhoods.name,
+      })
+      .from(users)
+      .innerJoin(handymanProfiles, eq(users.id, handymanProfiles.userId))
+      .leftJoin(neighborhoods, eq(handymanProfiles.neighborhoodId, neighborhoods.id))
+      .where(eq(users.role, 'handyman'));
+
+    if (handymenData.length === 0) {
+      return NextResponse.json({
+        success: true,
+        handymen: [],
+        total: 0,
+        message: 'No handymen found. Have you run the seed script?'
+      });
     }
 
-    // 2. Create neighborhood lookup
-    const neighborhoodMap = new Map();
-    allNeighborhoods.forEach(n => {
-      neighborhoodMap.set(n.name, n.id);
+    // Get services and reviews for each handyman
+    const enrichedHandymen = await Promise.all(
+      handymenData.map(async (handyman) => {
+        // Get services
+        const services = await db
+          .select({
+            serviceName: handymanServices.serviceName,
+          })
+          .from(handymanServices)
+          .where(eq(handymanServices.handymanId, handyman.id));
+
+        // Get review stats
+        const reviewStats = await db
+          .select({
+            avgRating: avg(reviews.rating),
+            reviewCount: count(reviews.id),
+          })
+          .from(reviews)
+          .where(eq(reviews.handymanId, handyman.id));
+
+        const rating = reviewStats[0]?.avgRating ? parseFloat(reviewStats[0].avgRating) : 4.5;
+        const reviewCount = reviewStats[0]?.reviewCount || 0;
+
+        return {
+          id: handyman.id.toString(),
+          name: handyman.name,
+          bio: handyman.bio || 'Experienced local handyman ready to help with your projects.',
+          services: services.map(s => s.serviceName),
+          hourlyRate: parseFloat(handyman.hourlyRate || '50'),
+          rating: Math.round(rating * 10) / 10, // Round to 1 decimal
+          reviewCount,
+          distance: 0.5 + (Math.random() * 3), // TODO: Calculate real distance
+          neighborhood: handyman.neighborhoodName || 'Local Area',
+          responseTime: ['15 minutes', '30 minutes', '1 hour'][Math.floor(Math.random() * 3)], // TODO: Calculate from actual response data
+          isAvailable: availableOnly ? true : Math.random() > 0.3, // TODO: Real availability system
+        };
+      })
+    );
+
+    // Apply filters
+    let filteredHandymen = enrichedHandymen;
+
+    if (service && service !== 'All Services') {
+      filteredHandymen = filteredHandymen.filter(handyman =>
+        handyman.services.some(s => 
+          s.toLowerCase().includes(service.toLowerCase()) ||
+          service.toLowerCase().includes(s.toLowerCase())
+        )
+      );
+    }
+
+    if (availableOnly) {
+      filteredHandymen = filteredHandymen.filter(handyman => handyman.isAvailable);
+    }
+
+    console.log(`Returning ${filteredHandymen.length} handymen`);
+
+    return NextResponse.json({
+      success: true,
+      handymen: filteredHandymen,
+      total: filteredHandymen.length
     });
 
-    // 3. Insert handymen users and profiles
-    console.log('👨‍🔧 Adding handymen...');
-    
-    for (const handyman of SEED_DATA.handymen) {
-      // Create user account
-      const hashedPassword = await bcrypt.hash('demo123', 12);
-      
-      const [newUser] = await db.insert(users).values({
-        name: handyman.name,
-        email: handyman.email,
-        phone: handyman.phone,
-        password: hashedPassword,
-        role: 'handyman'
-      }).returning();
-
-      // Create handyman profile
-      const neighborhoodId = neighborhoodMap.get(handyman.neighborhood);
-      
-      await db.insert(handymanProfiles).values({
-        userId: newUser.id,
-        bio: handyman.bio,
-        hourlyRate: handyman.hourlyRate,
-        isVerified: handyman.isVerified,
-        neighborhoodId: neighborhoodId
-      });
-
-      console.log(`✅ Added ${handyman.name} in ${handyman.neighborhood}`);
-    }
-
-    console.log('🎉 Database seeded successfully!');
-    console.log('📊 Summary:');
-    console.log(`   • ${allNeighborhoods.length} neighborhoods (existing)`);
-    console.log(`   • ${SEED_DATA.handymen.length} handymen (new)`);
-    console.log('');
-    console.log('🔑 All handymen passwords: demo123');
-    console.log('');
-    console.log('🚀 Your search page should now show real results!');
-
   } catch (error) {
-    console.error('❌ Seed failed:', error);
+    console.error('Error fetching handymen:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to fetch handymen',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
   }
 }
-
-// Run the seed
-seedDatabase();

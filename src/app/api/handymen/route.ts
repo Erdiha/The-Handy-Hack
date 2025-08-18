@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { users } from '@/lib/schema';
-import { eq, and, like } from 'drizzle-orm';
+import { users, handymanProfiles, neighborhoods, handymanServices, reviews } from '@/lib/schema';
+import { eq, avg, count } from 'drizzle-orm';
 
-// GET - Fetch handymen
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -12,63 +11,80 @@ export async function GET(request: Request) {
 
     console.log('Fetching handymen with filters:', { service, availableOnly });
 
-    // Fetch all handymen (users with role 'handyman')
-    const handymenQuery = db
+    // Get handymen with their profiles and neighborhoods
+    const handymenData = await db
       .select({
         id: users.id,
         name: users.name,
         email: users.email,
-        role: users.role,
-        // Add other fields you need from your users table
+        phone: users.phone,
+        bio: handymanProfiles.bio,
+        hourlyRate: handymanProfiles.hourlyRate,
+        isVerified: handymanProfiles.isVerified,
+        neighborhoodName: neighborhoods.name,
       })
       .from(users)
+      .innerJoin(handymanProfiles, eq(users.id, handymanProfiles.userId))
+      .leftJoin(neighborhoods, eq(handymanProfiles.neighborhoodId, neighborhoods.id))
       .where(eq(users.role, 'handyman'));
 
-    const handymenFromDB = await handymenQuery;
+    if (handymenData.length === 0) {
+      return NextResponse.json({
+        success: true,
+        handymen: [],
+        total: 0,
+        message: 'No handymen found. Have you run the seed script?'
+      });
+    }
 
-    console.log(`Found ${handymenFromDB.length} handymen in database`);
+    // Get services and reviews for each handyman
+    const enrichedHandymen = await Promise.all(
+      handymenData.map(async (handyman) => {
+        // Get services
+        const services = await db
+          .select({
+            serviceName: handymanServices.serviceName,
+          })
+          .from(handymanServices)
+          .where(eq(handymanServices.handymanId, handyman.id));
 
-    // Transform the data to match your frontend expectations
-    const transformedHandymen = handymenFromDB.map((handyman, index) => {
-      // Mock data - replace with real data from your database
-      const mockServices = [
-        ['Plumbing', 'Electrical'],
-        ['Painting', 'Carpentry'],
-        ['Appliance Repair', 'Furniture Assembly'],
-        ['Home Cleaning', 'Landscaping'],
-        ['Tile Work', 'Drywall Repair'],
-        ['General Repair', 'Plumbing'],
-      ];
+        // Get review stats
+        const reviewStats = await db
+          .select({
+            avgRating: avg(reviews.rating),
+            reviewCount: count(reviews.id),
+          })
+          .from(reviews)
+          .where(eq(reviews.handymanId, handyman.id));
 
-      const mockLocations = ['Highland Park', 'Downtown', 'Uptown', 'Midtown', 'Riverside'];
-      const mockBios = [
-        'Experienced handyman with 10+ years serving the community. Quality work guaranteed!',
-        'Local contractor specializing in home repairs and improvements. Licensed and insured.',
-        'Fast, reliable service for all your home maintenance needs. Available weekends!',
-        'Professional handyman with expertise in multiple trades. Fair pricing, honest work.',
-      ];
+        const rating = reviewStats[0]?.avgRating ? parseFloat(reviewStats[0].avgRating) : 4.5;
+        const reviewCount = reviewStats[0]?.reviewCount || 0;
 
-      return {
-        id: handyman.id.toString(), // Ensure this is the actual user ID
-        name: handyman.name,
-        bio: mockBios[index % mockBios.length],
-        services: mockServices[index % mockServices.length],
-        hourlyRate: 45 + (index * 5), // Mock rates
-        rating: 4.2 + (Math.random() * 0.8), // Mock ratings
-        reviewCount: 15 + (index * 3),
-        distance: 0.5 + (Math.random() * 3),
-        neighborhood: mockLocations[index % mockLocations.length],
-        responseTime: index % 2 === 0 ? '30 minutes' : '1 hour',
-        isAvailable: availableOnly ? true : Math.random() > 0.3, // Mock availability
-      };
-    });
+        return {
+          id: handyman.id.toString(),
+          name: handyman.name,
+          bio: handyman.bio || 'Experienced local handyman ready to help with your projects.',
+          services: services.map(s => s.serviceName),
+          hourlyRate: parseFloat(handyman.hourlyRate || '50'),
+          rating: Math.round(rating * 10) / 10, // Round to 1 decimal
+          reviewCount,
+          distance: 0.5 + (Math.random() * 3), // TODO: Calculate real distance
+          neighborhood: handyman.neighborhoodName || 'Local Area',
+          responseTime: ['15 minutes', '30 minutes', '1 hour'][Math.floor(Math.random() * 3)], // TODO: Calculate from actual response data
+          isAvailable: availableOnly ? true : Math.random() > 0.3, // TODO: Real availability system
+        };
+      })
+    );
 
     // Apply filters
-    let filteredHandymen = transformedHandymen;
+    let filteredHandymen = enrichedHandymen;
 
     if (service && service !== 'All Services') {
       filteredHandymen = filteredHandymen.filter(handyman =>
-        handyman.services.includes(service)
+        handyman.services.some(s => 
+          s.toLowerCase().includes(service.toLowerCase()) ||
+          service.toLowerCase().includes(s.toLowerCase())
+        )
       );
     }
 
@@ -76,7 +92,7 @@ export async function GET(request: Request) {
       filteredHandymen = filteredHandymen.filter(handyman => handyman.isAvailable);
     }
 
-    console.log(`Returning ${filteredHandymen.length} filtered handymen`);
+    console.log(`Returning ${filteredHandymen.length} handymen`);
 
     return NextResponse.json({
       success: true,
@@ -91,30 +107,6 @@ export async function GET(request: Request) {
         error: 'Failed to fetch handymen',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
-      { status: 500 }
-    );
-  }
-}
-
-// POST - Create handyman profile (optional)
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const { userId, bio, services, hourlyRate } = body;
-
-    // Add logic to create/update handyman profile
-    // This would typically update additional profile fields in your users table
-    // or create records in a separate handyman_profiles table
-
-    return NextResponse.json({
-      success: true,
-      message: 'Handyman profile updated'
-    });
-
-  } catch (error) {
-    console.error('Error updating handyman profile:', error);
-    return NextResponse.json(
-      { error: 'Failed to update profile' },
       { status: 500 }
     );
   }

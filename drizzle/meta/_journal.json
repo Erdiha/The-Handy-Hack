@@ -15,6 +15,13 @@
       "when": 1755025300567,
       "tag": "0001_loud_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1755276222765,
+      "tag": "0002_careful_luke_cage",
+      "breakpoints": true
     }
   ]
 }

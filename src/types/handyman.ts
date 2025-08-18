@@ -1,9 +1,8 @@
-
 export interface Handyman {
   id: string;
   name: string;
   bio: string;
-  services: string[];
+  services: string[]; // ← Keep as strings for search page
   hourlyRate: number;
   rating: number;
   reviewCount: number;
@@ -13,11 +12,18 @@ export interface Handyman {
   isAvailable: boolean;
 }
 
-export interface HandymanProfile extends Handyman {
+export interface HandymanProfile {
+  // ← Remove "extends Handyman"
+  id: string;
+  name: string;
+  bio: string;
+  services: Service[]; // ← Objects for profile page
+  hourlyRate: number;
   email?: string;
   phone?: string;
   isVerified: boolean;
   joinedDate: string;
+  neighborhood: string;
   stats: {
     rating: number;
     reviewCount: number;

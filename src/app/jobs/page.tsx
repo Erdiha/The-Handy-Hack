@@ -59,11 +59,6 @@ export default function JobsPage() {
 
   // Filter out jobs posted by current user AND apply other filters
   const filteredJobs = jobs.filter((job) => {
-    // Don't show user their own jobs
-    if (session?.user?.id && job.customerId === session.user.id) {
-      return false;
-    }
-
     const matchesCategory =
       selectedCategory === "All Categories" ||
       job.category === selectedCategory;
@@ -72,7 +67,6 @@ export default function JobsPage() {
 
     return matchesCategory && matchesUrgency;
   });
-
   return (
     <div className="min-h-[calc(100vh-5rem)] bg-orange-50">
       {/* Header */}
@@ -266,135 +260,179 @@ function JobCard({
   job: Job;
   index: number;
   currentUserId?: string;
-}) {
-  const getUrgencyColor = (urgency: string) => {
-    switch (urgency) {
-      case "asap":
-        return "bg-red-100 text-red-800 border-red-200";
-      case "emergency":
-        return "bg-red-200 text-red-900 border-red-300";
-      case "week":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      default:
-        return "bg-green-100 text-green-800 border-green-200";
-    }
-  };
+  }) {
+    const [accepting, setAccepting] = useState(false); // ADD THIS
 
-  const getUrgencyText = (urgency: string) => {
-    switch (urgency) {
-      case "asap":
-        return "🔥 ASAP";
-      case "emergency":
-        return "🚨 Emergency";
-      case "week":
-        return "📅 This Week";
-      default:
-        return "🕐 Flexible";
-    }
-  };
+    // ADD THIS FUNCTION:
+    const handleAcceptJob = async (jobId: string) => {
+      if (accepting) return;
 
-  const getBudgetDisplay = (job: Job) => {
-    if (job.budget === "quote") return "Get quotes";
-    if (job.budget === "hour") return `$${job.budgetAmount}/hr`;
-    return `$${job.budgetAmount} fixed`;
-  };
+      setAccepting(true);
+      try {
+        const response = await fetch(`/api/jobs/${jobId}/accept`, {
+          method: "POST",
+        });
 
-  // Check if this is the user's own job
-  const isOwnJob = currentUserId && job.customerId === currentUserId;
+        const data = await response.json();
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: index * 0.1 }}
-      className="bg-white rounded-3xl shadow-lg hover:shadow-xl border border-slate-100 overflow-hidden transition-all duration-300 hover:-translate-y-1"
-    >
-      <div className="p-6">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h3 className="text-xl font-bold text-slate-800">{job.title}</h3>
-              <span
-                className={`px-3 py-1 rounded-full text-xs font-semibold border ${getUrgencyColor(
-                  job.urgency
-                )}`}
-              >
-                {getUrgencyText(job.urgency)}
-              </span>
-              {isOwnJob && (
-                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
-                  Your Job
+        if (data.success) {
+          alert("Job accepted successfully!");
+          // Refresh the page to update job list
+          window.location.reload();
+        } else {
+          alert(data.error || "Failed to accept job");
+        }
+      } catch (error) {
+        alert("Failed to accept job");
+      } finally {
+        setAccepting(false);
+      }
+    };
+
+    const getUrgencyColor = (urgency: string) => {
+      switch (urgency) {
+        case "asap":
+          return "bg-red-100 text-red-800 border-red-200";
+        case "emergency":
+          return "bg-red-200 text-red-900 border-red-300";
+        case "week":
+          return "bg-yellow-100 text-yellow-800 border-yellow-200";
+        default:
+          return "bg-green-100 text-green-800 border-green-200";
+      }
+    };
+
+    const getUrgencyText = (urgency: string) => {
+      switch (urgency) {
+        case "asap":
+          return "🔥 ASAP";
+        case "emergency":
+          return "🚨 Emergency";
+        case "week":
+          return "📅 This Week";
+        default:
+          return "🕐 Flexible";
+      }
+    };
+
+    const getBudgetDisplay = (job: Job) => {
+      if (job.budget === "quote") return "Get quotes";
+      if (job.budget === "hour") return `$${job.budgetAmount}/hr`;
+      return `$${job.budgetAmount} fixed`;
+    };
+
+    // Check if this is the user's own job
+    const isOwnJob = currentUserId && job.customerId === currentUserId;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: index * 0.1 }}
+        className="bg-white rounded-3xl shadow-lg hover:shadow-xl border border-slate-100 overflow-hidden transition-all duration-300 hover:-translate-y-1"
+      >
+        <div className="p-6">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <h3 className="text-xl font-bold text-slate-800">
+                  {job.title}
+                </h3>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border ${getUrgencyColor(
+                    job.urgency
+                  )}`}
+                >
+                  {getUrgencyText(job.urgency)}
                 </span>
+                {isOwnJob && (
+                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                    Your Job
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-4 text-sm text-slate-600 mb-3">
+                <span className="flex items-center gap-1">
+                  <span>📍</span>
+                  <span>{job.location}</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span>🏷️</span>
+                  <span>{job.category}</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span>🕐</span>
+                  <span>{job.postedDate}</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <div className="text-2xl font-bold text-slate-800">
+                {getBudgetDisplay(job)}
+              </div>
+              <div className="text-sm text-slate-500">
+                {job.responses} responses
+              </div>
+            </div>
+          </div>
+
+          {/* Description */}
+          <p className="text-slate-700 leading-relaxed mb-6">
+            {job.description}
+          </p>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-slate-500">
+              Posted by {job.postedBy}
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="border-2 border-slate-200 text-slate-700 hover:border-orange-300 hover:text-orange-600 px-4 py-2 rounded-xl"
+              >
+                View Details
+              </Button>
+
+              {isOwnJob ? (
+                <Button
+                  disabled
+                  className="bg-slate-300 text-slate-500 px-6 py-2 rounded-xl font-semibold cursor-not-allowed"
+                >
+                  Your Job
+                </Button>
+              ) : (
+                <>
+                  {/* Accept Job Button */}
+                  <Button
+                    onClick={() => handleAcceptJob(job.id)}
+                    disabled={accepting}
+                    className="bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white px-6 py-2 rounded-xl font-semibold"
+                  >
+                    {accepting ? "Accepting..." : "Accept Job"}
+                  </Button>
+
+                  {/* Respond Button */}
+                  <Link
+                    href={`/messages?job=${job.id}&customerId=${
+                      job.customerId
+                    }&customer=${encodeURIComponent(
+                      job.postedBy
+                    )}&title=${encodeURIComponent(job.title)}`}
+                  >
+                    <Button className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-semibold">
+                      Respond
+                    </Button>
+                  </Link>
+                </>
               )}
             </div>
-
-            <div className="flex items-center gap-4 text-sm text-slate-600 mb-3">
-              <span className="flex items-center gap-1">
-                <span>📍</span>
-                <span>{job.location}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span>🏷️</span>
-                <span>{job.category}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span>🕐</span>
-                <span>{job.postedDate}</span>
-              </span>
-            </div>
-          </div>
-
-          <div className="text-right">
-            <div className="text-2xl font-bold text-slate-800">
-              {getBudgetDisplay(job)}
-            </div>
-            <div className="text-sm text-slate-500">
-              {job.responses} responses
-            </div>
           </div>
         </div>
-
-        {/* Description */}
-        <p className="text-slate-700 leading-relaxed mb-6">{job.description}</p>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-slate-500">Posted by {job.postedBy}</div>
-
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              className="border-2 border-slate-200 text-slate-700 hover:border-orange-300 hover:text-orange-600 px-4 py-2 rounded-xl"
-            >
-              View Details
-            </Button>
-
-            {/* Conditionally render Respond button */}
-            {isOwnJob ? (
-              <Button
-                disabled
-                className="bg-slate-300 text-slate-500 px-6 py-2 rounded-xl font-semibold cursor-not-allowed"
-                title="This is your own job posting"
-              >
-                Your Job
-              </Button>
-            ) : (
-              <Link
-                href={`/messages?job=${job.id}&customerId=${
-                  job.customerId
-                }&customer=${encodeURIComponent(
-                  job.postedBy
-                )}&title=${encodeURIComponent(job.title)}`}
-              >
-                <Button className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-semibold">
-                  Respond
-                </Button>
-              </Link>
-            )}
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
+      </motion.div>
+    );
+  }

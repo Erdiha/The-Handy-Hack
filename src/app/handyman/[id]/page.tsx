@@ -168,12 +168,22 @@ const [showPhone, setShowPhone] = useState(false);
                         💬 Send Message
                       </Button>
                     </Link>
-                    <Button
-                      variant="outline"
-                      className="w-full border-2 border-orange-300 text-orange-700 hover:bg-orange-50 font-semibold py-3 rounded-xl"
+                    <Link
+                      href={`/messages?handyman=${
+                        profile.id
+                      }&name=${encodeURIComponent(
+                        profile.name
+                      )}&intent=quote&service=${encodeURIComponent(
+                        "Quote Request"
+                      )}`}
                     >
-                      📋 Request Quote
-                    </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full border-2 border-orange-300 text-orange-700 hover:bg-orange-50 font-semibold py-3 rounded-xl"
+                      >
+                        📋 Request Quote
+                      </Button>
+                    </Link>
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-orange-200 text-sm text-slate-600 text-center">
