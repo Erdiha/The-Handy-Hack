@@ -11,6 +11,23 @@ import {
 } from "drizzle-orm/pg-core";
 
 // ADD THESE TWO TABLES to your existing schema.ts file
+export const handymanProfiles = pgTable("handyman_profiles", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .references(() => users.id)
+    .notNull(),
+  bio: text("bio"),
+  hourlyRate: decimal("hourly_rate", { precision: 8, scale: 2 }),
+  isVerified: boolean("is_verified").default(false),
+  isAvailable: boolean("is_available").default(true),
+  availabilitySchedule: jsonb("availability_schedule"),
+  useScheduledAvailability: boolean("use_scheduled_availability").default(
+    false
+  ),
+  neighborhoodId: integer("neighborhood_id").references(() => neighborhoods.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
@@ -144,18 +161,6 @@ export const neighborhoods = pgTable("neighborhoods", {
   state: text("state").notNull(),
 });
 
-export const handymanProfiles = pgTable("handyman_profiles", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id")
-    .references(() => users.id)
-    .notNull(),
-  bio: text("bio"),
-  hourlyRate: decimal("hourly_rate", { precision: 8, scale: 2 }),
-  isVerified: boolean("is_verified").default(false),
-  neighborhoodId: integer("neighborhood_id").references(() => neighborhoods.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
 export const jobs = pgTable("jobs", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -170,7 +175,12 @@ export const jobs = pgTable("jobs", {
   postedBy: integer("posted_by")
     .references(() => users.id)
     .notNull(),
+  hiddenFromCustomer: boolean("hidden_from_customer").default(false),
+  hiddenFromHandyman: boolean("hidden_from_handyman").default(false),
   status: text("status").notNull().default("open"),
+  acceptedAt: timestamp("accepted_at"),
+  completedAt: timestamp("completed_at"),
+  archivedAt: timestamp("archived_at"), // ADD THIS LINE
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

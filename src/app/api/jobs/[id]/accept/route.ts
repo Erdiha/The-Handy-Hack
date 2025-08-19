@@ -25,12 +25,12 @@ export async function POST(
     const [job] = await db
       .select()
       .from(jobs)
-      .where(and(eq(jobs.id, jobId), eq(jobs.status, 'open')))
+      .where(and(eq(jobs.id, jobId), eq(jobs.status, "open")))
       .limit(1);
 
     if (!job) {
       return NextResponse.json(
-        { error: 'Job not found or already taken' },
+        { error: "Job not found or already taken" },
         { status: 404 }
       );
     }
@@ -40,15 +40,15 @@ export async function POST(
       .update(jobs)
       .set({
         acceptedBy: handymanId,
-        status: 'accepted'
+        status: "accepted",
+        acceptedAt: new Date(), // ADD THIS
       })
       .where(eq(jobs.id, jobId));
 
     return NextResponse.json({
       success: true,
-      message: 'Job accepted successfully'
+      message: "Job accepted successfully",
     });
-
   } catch (error) {
     console.error('Error accepting job:', error);
     return NextResponse.json(

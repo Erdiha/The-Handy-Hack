@@ -54,26 +54,31 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
     const urgency = searchParams.get('urgency');
 
     // Build query conditions
-    const query = db.select({
-      id: jobs.id,
-      title: jobs.title,
-      description: jobs.description,
-      category: jobs.category,
-      urgency: jobs.urgency,
-      budget: jobs.budget,
-      budgetAmount: jobs.budgetAmount,
-      location: jobs.location,
-      status: jobs.status,
-      createdAt: jobs.createdAt,
-      postedBy: jobs.postedBy,
-      photos: jobs.photos 
-    }).from(jobs);
+const query = db
+  .select({
+    id: jobs.id,
+    title: jobs.title,
+    description: jobs.description,
+    category: jobs.category,
+    urgency: jobs.urgency,
+    budget: jobs.budget,
+    budgetAmount: jobs.budgetAmount,
+    location: jobs.location,
+    status: jobs.status,
+    createdAt: jobs.createdAt,
+    postedBy: jobs.postedBy,
+    photos: jobs.photos,
+    acceptedBy: jobs.acceptedBy, // ADD THIS LINE
+  })
+  .from(jobs);
 
-    // Execute query
-    const allJobs = await query;
+// Execute query
+const allJobs = await query;
 
-    // Filter results (could be done in SQL for better performance)
-    let filteredJobs = allJobs.filter(job => job.status === 'open');
+// Filter results (could be done in SQL for better performance)
+let filteredJobs = allJobs.filter(
+  (job) => job.status === "open" && job.acceptedBy === null
+);
     
     if (category && category !== 'All Categories') {
       filteredJobs = filteredJobs.filter(job => job.category === category);

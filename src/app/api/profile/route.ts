@@ -38,28 +38,39 @@ export async function GET() {
         .select({
           bio: handymanProfiles.bio,
           hourlyRate: handymanProfiles.hourlyRate,
+          isAvailable: handymanProfiles.isAvailable,
+          useScheduledAvailability: handymanProfiles.useScheduledAvailability, // ADD THIS LINE
           neighborhoodName: neighborhoods.name,
         })
         .from(handymanProfiles)
-        .leftJoin(neighborhoods, eq(handymanProfiles.neighborhoodId, neighborhoods.id))
+        .leftJoin(
+          neighborhoods,
+          eq(handymanProfiles.neighborhoodId, neighborhoods.id)
+        )
         .where(eq(handymanProfiles.userId, userId))
         .limit(1);
 
       if (handymanProfile[0]) {
-        // Handyman has completed onboarding
+        // Handyman has completed onboardiå
         return NextResponse.json({
+          success: true,
           hasCompletedOnboarding: true,
           phone: user[0].phone,
           bio: handymanProfile[0].bio,
           hourlyRate: handymanProfile[0].hourlyRate,
+          isAvailable: handymanProfile[0].isAvailable ?? true,
+          useScheduledAvailability:
+            handymanProfile[0].useScheduledAvailability ?? false, // ADD THIS LINE
           neighborhood: handymanProfile[0].neighborhoodName,
-          services: ['Plumbing', 'Electrical'],
+          services: ["Plumbing", "Electrical"],
         });
       } else {
         // Handyman needs onboarding
         return NextResponse.json({
+          success: true, // ADD THIS LINE
           hasCompletedOnboarding: false,
           phone: user[0].phone,
+          isAvailable: true, // ADD THIS LINE - default for new handymen
         });
       }
     } else {
