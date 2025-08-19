@@ -15,12 +15,41 @@ import { SetAvailabilityModal } from "@/components/modals/SetAvailabilityModal";
 import { AvailabilityData } from "@/types/availability";
 import { CompletedJobsModal } from "@/components/modals/CompletedJobsModal";
 import { ArchivedJobsModal } from "@/components/modals/ArchivedJobsModal";
-// Remove the old interface and type definitions, just keep this import
+import { CustomerJobDetailsModal } from "@/components/modals/CustomerJobDetailsModal";
+
 interface SessionUser {
   id: string;
   email: string;
   name: string;
   role: "customer" | "handyman";
+}
+export interface CustomerJob {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  location: string;
+  budget: string;
+  budgetAmount?: string;
+  status: string;
+  urgency: string;
+  createdAt: string;
+  acceptedAt?: string;
+  completedAt?: string;
+  handyman?: {
+    id: string;
+    name: string;
+    phone?: string;
+  };
+  responses?: number;
+}
+interface TrustedHandyman {
+  id: string;
+  name: string;
+  service: string;
+  rating: number;
+  jobCount: number;
+  available: boolean;
 }
 
 interface UserProfile {
@@ -967,7 +996,6 @@ function HandymanDashboard({
   );
 }
 
-// CUSTOMER DASHBOARD - Clean & Focused
 function CustomerDashboard({
   profile,
   user,
@@ -977,7 +1005,94 @@ function CustomerDashboard({
   user: SessionUser;
   firstName: string;
 }) {
-  const hasBookings = false;
+  // Add these new states
+  const [stats, setStats] = useState({
+    totalJobs: 0,
+    thisMonthSpending: 0,
+    estimatedSavings: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [customerJobs, setCustomerJobs] = useState<CustomerJob[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [trustedHandymen, setTrustedHandymen] = useState<TrustedHandyman[]>([]);
+  const [handymenLoading, setHandymenLoading] = useState(true);
+  const [isJobModalOpen, setIsJobModalOpen] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<CustomerJob | null>(null);
+  const [showAllJobs, setShowAllJobs] = useState(false);
+  const [neighborhoodStats, setNeighborhoodStats] = useState({
+    jobsThisWeek: 0,
+    avgResponseTime: "",
+    availableHandymen: 0,
+    neighborhood: "Your area",
+  });
+  const [neighborhoodLoading, setNeighborhoodLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats();
+    fetchCustomerJobs();
+    fetchTrustedHandymen();
+    fetchNeighborhoodStats(); // Add this
+  }, []);
+
+  const fetchNeighborhoodStats = async () => {
+    try {
+      const response = await fetch("/api/customer/neighborhood-stats");
+      const data = await response.json();
+      if (data.success) {
+        setNeighborhoodStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Failed to fetch neighborhood stats:", error);
+    } finally {
+      setNeighborhoodLoading(false);
+    }
+  };
+
+  const fetchTrustedHandymen = async () => {
+    try {
+      const response = await fetch("/api/customer/trusted-handymen");
+      const data = await response.json();
+      if (data.success) {
+        setTrustedHandymen(data.trustedHandymen);
+      }
+    } catch (error) {
+      console.error("Failed to fetch trusted handymen:", error);
+    } finally {
+      setHandymenLoading(false);
+    }
+  };
+
+  const fetchCustomerJobs = async () => {
+    try {
+      const response = await fetch("/api/customer/jobs");
+      const data = await response.json();
+      if (data.success) {
+        setCustomerJobs(data.jobs);
+      }
+    } catch (error) {
+      console.error("Failed to fetch customer jobs:", error);
+    } finally {
+      setJobsLoading(false);
+    }
+  };
+  const fetchStats = async () => {
+    try {
+      const response = await fetch("/api/customer/stats");
+      const data = await response.json();
+      if (data.success) {
+        setStats(data.stats);
+      }
+    } catch (error) {
+      console.error("Failed to fetch stats:", error);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const hasActiveJobs = customerJobs.some(
+    (job) => job.status === "accepted" || job.status === "open"
+  );
+
   const favoriteHandymen = [
     {
       name: "Mike Rodriguez",
@@ -1018,22 +1133,68 @@ function CustomerDashboard({
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
         >
-          {hasBookings ? (
-            // Show current bookings
+          {hasActiveJobs ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-900 mb-6">
-                Your Current Booking
-              </h2>
-              {/* Booking details would go here */}
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-slate-900">
+                  {showAllJobs ? "All Jobs" : "Active Jobs"}
+                </h2>
+                <Button
+                  onClick={() => setShowAllJobs(!showAllJobs)}
+                  variant="outline"
+                  className="text-sm"
+                >
+                  {showAllJobs ? "Show Active Only" : "Show All Jobs"}
+                </Button>
+              </div>
+
+              {jobsLoading ? (
+                <div className="text-center py-4">
+                  <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-900 rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-slate-500">Loading jobs...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {customerJobs
+                    .filter(
+                      (job) =>
+                        showAllJobs ||
+                        job.status === "accepted" ||
+                        job.status === "open"
+                    )
+                    .map((job) => (
+                      <div
+                        key={job.id}
+                        className="border border-slate-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+                        onClick={() => {
+                          setSelectedJob(job);
+                          setIsJobModalOpen(true);
+                        }}
+                      >
+                        <h3 className="font-medium text-slate-900">
+                          {job.title}
+                        </h3>
+                        <p className="text-slate-600 text-sm">
+                          {job.status} • {job.category}
+                          {job.status === "completed" && " • ✓ Completed"}
+                          {job.status === "cancelled" && " • ✗ Cancelled"}
+                        </p>
+                        {job.handyman && (
+                          <p className="text-slate-500 text-sm">
+                            Handyman: {job.handyman.name}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           ) : (
-            // Empty state - focus on finding help
             <div className="bg-white rounded-2xl border border-slate-200 p-12 shadow-sm text-center">
               <div className="max-w-md mx-auto">
                 <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
                   <div className="w-8 h-8 bg-slate-400 rounded-lg"></div>
                 </div>
-
                 <h2 className="text-2xl font-bold text-slate-900 mb-4">
                   Ready to get something fixed?
                 </h2>
@@ -1041,7 +1202,6 @@ function CustomerDashboard({
                   Browse trusted handymen in your neighborhood or get emergency
                   help within 15 minutes.
                 </p>
-
                 <div className="space-y-3">
                   <Link href="/search" className="block">
                     <Button className="w-full bg-slate-900 text-white hover:bg-slate-800 py-4 text-lg">
@@ -1070,9 +1230,14 @@ function CustomerDashboard({
               Your Trusted Pros
             </h3>
 
-            {favoriteHandymen.length > 0 ? (
+            {handymenLoading ? (
+              <div className="text-center py-4">
+                <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-900 rounded-full animate-spin mx-auto mb-2"></div>
+                <p className="text-slate-500 text-sm">Loading...</p>
+              </div>
+            ) : trustedHandymen.length > 0 ? (
               <div className="space-y-3">
-                {favoriteHandymen.map((handyman, index) => (
+                {trustedHandymen.map((handyman, index) => (
                   <div
                     key={index}
                     className="flex items-center justify-between p-3 rounded-lg border border-slate-200"
@@ -1084,17 +1249,26 @@ function CustomerDashboard({
                           {handyman.name}
                         </p>
                         <p className="text-slate-500 text-xs">
-                          {handyman.service} • {handyman.rating}
+                          {handyman.service} • {handyman.rating?.toFixed(1)} •{" "}
+                          {handyman.jobCount} jobs
                         </p>
                       </div>
                     </div>
                     {handyman.available ? (
-                      <Button
-                        size="sm"
-                        className="bg-slate-900 text-white hover:bg-slate-800 text-xs px-3"
+                      <Link
+                        href={`/messages?handyman=${
+                          handyman.id
+                        }&name=${encodeURIComponent(
+                          handyman.name
+                        )}&service=General%20Inquiry`}
                       >
-                        Book
-                      </Button>
+                        <Button
+                          size="sm"
+                          className="bg-slate-900 text-white hover:bg-slate-800 text-xs px-3"
+                        >
+                          Book
+                        </Button>
+                      </Link>
                     ) : (
                       <span className="text-slate-400 text-xs">Busy</span>
                     )}
@@ -1114,39 +1288,60 @@ function CustomerDashboard({
             <div className="space-y-4">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">Total Jobs</span>
-                <span className="font-semibold text-slate-900">2</span>
+                <span className="font-semibold text-slate-900">
+                  {statsLoading ? "..." : stats.totalJobs}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">This Month</span>
-                <span className="font-semibold text-slate-900">$245</span>
+                <span className="font-semibold text-slate-900">
+                  {statsLoading ? "..." : `$${stats.thisMonthSpending}`}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">Saved vs TaskRabbit</span>
-                <span className="font-semibold text-green-600">~$89</span>
+                <span className="font-semibold text-green-600">
+                  {statsLoading ? "..." : `~$${stats.estimatedSavings}`}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Neighborhood Activity */}
           <div className="bg-slate-900 rounded-2xl p-6 text-white">
-            <h3 className="font-semibold mb-3">In Your Area</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-300">Jobs this week</span>
-                <span>23</span>
+            <h3 className="font-semibold mb-3">
+              In {neighborhoodStats.neighborhood}
+            </h3>
+            {neighborhoodLoading ? (
+              <div className="space-y-3 text-sm">
+                <div className="h-4 bg-slate-700 rounded animate-pulse"></div>
+                <div className="h-4 bg-slate-700 rounded animate-pulse"></div>
+                <div className="h-4 bg-slate-700 rounded animate-pulse"></div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Avg response</span>
-                <span>18 min</span>
+            ) : (
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-300">Jobs this week</span>
+                  <span>{neighborhoodStats.jobsThisWeek}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-300">Avg response</span>
+                  <span>{neighborhoodStats.avgResponseTime}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-300">Available pros</span>
+                  <span>{neighborhoodStats.availableHandymen}</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-300">Available pros</span>
-                <span>12</span>
-              </div>
-            </div>
+            )}
           </div>
         </motion.div>
       </div>
+      <CustomerJobDetailsModal
+        isOpen={isJobModalOpen}
+        onClose={() => setIsJobModalOpen(false)}
+        job={selectedJob}
+        onJobUpdate={fetchCustomerJobs} // Add this
+      />
     </div>
   );
 }
