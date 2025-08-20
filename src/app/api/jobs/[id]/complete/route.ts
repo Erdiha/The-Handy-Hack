@@ -7,7 +7,7 @@ import { eq, and } from "drizzle-orm";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
@@ -15,7 +15,8 @@ export async function POST(
   }
 
   try {
-    const jobId = parseInt(params.id);
+    const { id } = await params;
+    const jobId = parseInt(id);
     const handymanId = parseInt(session.user.id);
 
     // Check if job exists and is accepted by this handyman
@@ -41,7 +42,7 @@ export async function POST(
       .update(jobs)
       .set({
         status: "completed",
-        completedAt: new Date(), // ADD THIS
+        completedAt: new Date(),
       })
       .where(eq(jobs.id, jobId));
 
