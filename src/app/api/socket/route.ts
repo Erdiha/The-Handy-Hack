@@ -1,77 +1,52 @@
-// types/socket.ts - Clean types with no "any"
-import { NextApiResponse } from 'next';
-import { Server as NetServer } from 'http';
-import { Server as ServerIO, Socket } from 'socket.io';
+// src/app/api/socket/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { Server as NetServer } from "http";
+import { Server as ServerIO } from "socket.io";
+import type {
+  ServerToClientEvents,
+  ClientToServerEvents,
+  SocketData,
+  CustomSocket,
+} from "@/types/socket";
 
-// Message interface
-export interface SocketMessage {
-  id: string;
-  conversationId: string;
-  senderId: string;
-  senderName: string;
-  content: string;
-  timestamp: string;
-  isRead: boolean;
-  tempId?: string;
+declare global {
+  var io:
+    | ServerIO<ClientToServerEvents, ServerToClientEvents, never, SocketData>
+    | undefined;
 }
 
-// User online status
-export interface OnlineUser {
-  userId: string;
-  userName: string;
-  timestamp: Date;
-}
+export async function GET(req: NextRequest) {
+  if (!global.io) {
+    console.log("🚀 Initializing Socket.io server...");
 
-// Typing indicator
-export interface TypingIndicator {
-  userId: string;
-  userName: string;
-  conversationId: string;
-}
+    // We'll initialize Socket.io here
+    const httpServer = (
+      req as NextRequest & {
+        socket?: {
+          server: NetServer;
+        };
+      }
+    ).socket?.server;
+    global.io = new ServerIO(httpServer, {
+      path: "/api/socket",
+      cors: {
+        origin: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        methods: ["GET", "POST"],
+        credentials: true,
+      },
+    });
 
-// Server to Client Events
-export interface ServerToClientEvents {
-  new_message: (message: SocketMessage) => void;
-  message_error: (data: { tempId: string; error: string }) => void;
-  user_online: (data: OnlineUser) => void;
-  user_offline: (data: { userId: string; timestamp: Date }) => void;
-  online_users: (userIds: string[]) => void;
-  user_started_typing: (data: TypingIndicator) => void;
-  user_stopped_typing: (data: { userId: string; conversationId: string }) => void;
-}
+    global.io.on("connection", (socket: CustomSocket) => {
+      console.log("👤 User connected:", socket.id);
 
-// Client to Server Events
-export interface ClientToServerEvents {
-  authenticate: (data: { userId: string; userName: string }) => void;
-  join_conversation: (conversationId: string) => void;
-  leave_conversation: (conversationId: string) => void;
-  send_message: (data: {
-    conversationId: string;
-    content: string;
-    tempId: string;
-    senderName: string;
-  }) => void;
-  typing_start: (data: { conversationId: string }) => void;
-  typing_stop: (data: { conversationId: string }) => void;
-}
+      // For now, just basic connection handling
+      socket.on("disconnect", () => {
+        console.log("👤 User disconnected:", socket.id);
+      });
+    });
 
-// Socket data stored on socket instance
-export interface SocketData {
-  userId?: string;
-  userName?: string;
-}
+    console.log("✅ Socket.io server initialized");
+  }
 
-// Custom socket with user properties
-export interface CustomSocket extends Socket<ClientToServerEvents, ServerToClientEvents, never, SocketData> {
-  userId?: string;
-  userName?: string;
+  return NextResponse.json({ message: "Socket.io server running" });
 }
-
-// API Response with Socket.io
-export type NextApiResponseServerIO = NextApiResponse & {
-  socket: {
-    server: NetServer & {
-      io: ServerIO<ClientToServerEvents, ServerToClientEvents, never, SocketData>;
-    };
-  };
-};

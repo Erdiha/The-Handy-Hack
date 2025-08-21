@@ -4,49 +4,6 @@ import { db } from "@/lib/db";
 import { handymanProfiles } from "@/lib/schema";
 import { eq } from "drizzle-orm";
 
-//  Update handyman availability schedule
-export const PATCH = withAuth(async (request: AuthenticatedRequest) => {
-  try {
-    const availabilityData = await request.json();
-    const userId = parseInt(request.user!.id);
-
-    console.log("🕒 Updating availability for user:", userId);
-    console.log("📅 New availability data:", availabilityData);
-
-    // Check if user is a handyman
-    if (request.user!.role !== "handyman") {
-      return NextResponse.json(
-        { error: "Only handymen can update availability schedule" },
-        { status: 403 }
-      );
-    }
-
-    // For now, we'll store the availability data as JSON in the handyman profile
-    // Later you could create a separate availability table for more complex queries
-    await db
-      .update(handymanProfiles)
-      .set({
-        availabilitySchedule: availabilityData, // You'll need to add this column
-        updatedAt: new Date(),
-      })
-      .where(eq(handymanProfiles.userId, userId));
-
-    console.log("✅ Availability schedule updated successfully");
-
-    return NextResponse.json({
-      success: true,
-      message: "Availability schedule updated successfully",
-      availability: availabilityData,
-    });
-  } catch (error) {
-    console.error("❌ Error updating availability schedule:", error);
-    return NextResponse.json(
-      { error: "Failed to update availability schedule" },
-      { status: 500 }
-    );
-  }
-});
-
 // GET - Fetch handyman availability schedule
 export const GET = withAuth(async (request: AuthenticatedRequest) => {
   console.log(
@@ -77,7 +34,7 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
     return NextResponse.json({
       success: true,
       availability: profile[0].availabilitySchedule || {
-        // Default availability if none set
+        // Default availability data
         weeklySchedule: {
           Monday: { start: "09:00", end: "17:00", enabled: true },
           Tuesday: { start: "09:00", end: "17:00", enabled: true },

@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { useRealTimeMessages } from "@/hooks/useRealTimeMessages";
+import { io } from "socket.io-client";
+
 interface Message {
   id: string;
   senderId: string;
@@ -38,7 +40,7 @@ interface Conversation {
 export default function MessagesPage() {
   const { data: session } = useSession();
 
-  // ✅ Your original state - unchanged
+  // State management
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<
@@ -50,52 +52,153 @@ export default function MessagesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [isMobile, setIsMobile] = useState(false);
 
-  // ✅ Your original refs - unchanged
+  // Refs
   const initializedRef = useRef(false);
   const urlProcessedRef = useRef(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isUserScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ✅ Add Socket.io integration with minimal changes
-  // ✅ Add Socket.io related interfaces
-  interface SocketMessage {
-    id: string;
-    conversationId: string;
-    senderId: string;
-    senderName: string;
-    content: string;
-    timestamp: string;
-    isRead: boolean;
-    tempId?: string;
-  }
+  // **SEAMLESS SCROLL SYSTEM**
+  const isAtBottomRef = useRef(true);
+  const scrollObserverRef = useRef<IntersectionObserver | null>(null);
+  const bottomElementRef = useRef<HTMLDivElement>(null);
 
-  interface UseSocketProps {
-    onNewMessage: (socketMessage: SocketMessage) => void;
-    onMessageUpdate: (tempId: string, socketMessage: SocketMessage) => void;
-  }
+  const scrollToBottom = useCallback((force = false) => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
 
-  interface UseSocketReturn {
-    isConnected: boolean;
-    onlineUsers: string[];
-    typingUsers: Array<{
-      userId: string;
-      userName: string;
-      conversationId: string;
-    }>;
-    sendMessage: (conversationId: string, content: string) => string;
-    joinConversation: (conversationId: string) => void;
-    leaveConversation: (conversationId: string) => void;
-    startTyping: (conversationId: string) => void;
-    stopTyping: (conversationId: string) => void;
-  }
+    // Use requestAnimationFrame for ultra-smooth scrolling
+    requestAnimationFrame(() => {
+      const isNearBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight <
+        50;
 
-  const { isConnected, startPolling, stopPolling } = useRealTimeMessages({
+      if (force || isAtBottomRef.current || isNearBottom) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    });
+  }, []);
+
+  // Track if user is at bottom using Intersection Observer
+  useEffect(() => {
+    if (!bottomElementRef.current) return;
+
+    scrollObserverRef.current = new IntersectionObserver(
+      ([entry]) => {
+        isAtBottomRef.current = entry.isIntersecting;
+      },
+      {
+        root: messagesContainerRef.current,
+        threshold: 0.1,
+        rootMargin: "0px 0px 20px 0px",
+      }
+    );
+
+    scrollObserverRef.current.observe(bottomElementRef.current);
+
+    return () => {
+      if (scrollObserverRef.current) {
+        scrollObserverRef.current.disconnect();
+      }
+    };
+  }, [selectedConversationId]);
+
+  // Track user manual scrolling
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    isUserScrollingRef.current = true;
+
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      isUserScrollingRef.current = false;
+    }, 100);
+  }, []);
+
+  // Auto-scroll on ANY content change
+  useEffect(() => {
+    if (messages.length === 0) return;
+
+    const timer = setTimeout(() => {
+      if (!isUserScrollingRef.current) {
+        scrollToBottom(false);
+      }
+    }, 10); // Very fast response
+
+    return () => clearTimeout(timer);
+  }, [messages, scrollToBottom]);
+
+  // Force scroll when conversation changes
+  useEffect(() => {
+    if (selectedConversationId) {
+      setTimeout(() => {
+        isAtBottomRef.current = true;
+        scrollToBottom(true);
+      }, 50);
+    }
+  }, [selectedConversationId, scrollToBottom]);
+
+  // Check mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  // Socket.io and real-time messaging
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    console.log("Authenticating user:", session.user.id, session.user.name);
+
+    const socket = io();
+
+    socket.on("connect", () => {
+      console.log("✅ Socket.io connected:", socket.id);
+
+      socket.emit("authenticate", {
+        userId: session.user.id,
+        userName: session.user.name,
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [session?.user?.id]);
+
+  const {
+    isConnected,
+    onlineUsers,
+    typingUsers,
+    sendMessage: socketSendMessage,
+    joinConversation,
+    leaveConversation,
+    startTyping,
+    stopTyping,
+    startPolling,
+    stopPolling,
+  } = useRealTimeMessages({
     conversationId: selectedConversationId,
-    // Handle new messages
     onNewMessage: useCallback(
       (message: Message) => {
         const newMsg: Message = {
           id: message.id,
-          conversationId: message.conversationId, // ✅ now allowed
+          conversationId: message.conversationId,
           senderId: message.senderId,
           senderName: message.senderName,
           content: message.content,
@@ -113,7 +216,6 @@ export default function MessagesPage() {
           return [...prev, newMsg];
         });
 
-        // ✅ update conversation list
         setConversations((prev: Conversation[]) =>
           prev.map((conv: Conversation) =>
             conv.id === selectedConversationId
@@ -136,32 +238,29 @@ export default function MessagesPage() {
     ),
   });
 
-  // Mock Socket.io functionality since the hook doesn't provide it
-  const onlineUsers: string[] = [];
-  const typingUsers: Array<{
-    userId: string;
-    userName: string;
-    conversationId: string;
-  }> = [];
-  const socketSendMessage = (
-    conversationId: string,
-    content: string
-  ): string => {
-    return Math.random().toString(36);
-  };
-  const joinConversation = (conversationId: string) => {};
-  const leaveConversation = (conversationId: string) => {};
-  const startTyping = (conversationId: string) => {};
-  const stopTyping = (conversationId: string) => {};
-
-  // ✅ Get typing users for current conversation
   const currentTypingUsers = typingUsers.filter(
     (user) =>
       user.conversationId === selectedConversationId &&
       user.userId !== session?.user?.id
   );
 
-  // ✅ Your original loadConversations function - unchanged
+  // FORCE scroll for typing indicators
+  useEffect(() => {
+    if (currentTypingUsers.length > 0) {
+      const container = messagesContainerRef.current;
+      if (container) {
+        // Instant scroll to bottom when typing appears
+        container.scrollTop = container.scrollHeight;
+
+        // Backup scroll after short delay
+        setTimeout(() => {
+          container.scrollTop = container.scrollHeight;
+        }, 100);
+      }
+    }
+  }, [currentTypingUsers.length]);
+
+  // Load conversations
   const loadConversations = async () => {
     try {
       const response = await fetch("/api/conversations");
@@ -174,10 +273,9 @@ export default function MessagesPage() {
     }
   };
 
-  // ✅ Your original loadMessages function with Socket.io integration
+  // Load messages
   const loadMessages = async (conversationId: string) => {
     try {
-      // Leave previous conversation room
       if (selectedConversationId) {
         leaveConversation(selectedConversationId);
         stopTyping(selectedConversationId);
@@ -190,8 +288,6 @@ export default function MessagesPage() {
       if (data.success) {
         setMessages(data.messages);
         setSelectedConversationId(conversationId);
-
-        // Join new conversation room
         joinConversation(conversationId);
       }
     } catch (error) {
@@ -199,7 +295,7 @@ export default function MessagesPage() {
     }
   };
 
-  // ✅ Your original processURLParameters function - unchanged
+  // Process URL parameters
   const processURLParameters = async () => {
     const currentURL = window.location.search;
     const urlKey = `processed_${currentURL}`;
@@ -223,19 +319,7 @@ export default function MessagesPage() {
       let conversationId = null;
 
       if (jobId && customerId && jobTitle) {
-        const isCompleted = params.get("completed") === "true"; // ADD THIS LINE
-
-        console.log("Creating job conversation:", {
-          jobId,
-          customerId,
-          jobTitle,
-          isCompleted, // ADD THIS
-        });
-
-        // CHANGE the initialMessage:
-        const initialMessage = isCompleted
-          ? `Hi! Following up on the completed job: "${jobTitle}". Hope everything is working well! Let me know if you need any additional assistance.`
-          : `Hi! I'm interested in your job posting: "${jobTitle}". I'd like to discuss the details and provide a quote.`;
+        const isCompleted = params.get("completed") === "true";
 
         const response = await fetch("/api/conversations", {
           method: "POST",
@@ -243,29 +327,18 @@ export default function MessagesPage() {
           body: JSON.stringify({
             otherUserId: customerId,
             jobId,
-            //initialMessage, // NOW USES THE CONDITIONAL MESSAGE
           }),
         });
         const data = await response.json();
         if (data.success) {
           conversationId = data.conversationId;
-          console.log("Job conversation result:", data.message);
-        } else {
-          console.error("Failed to create job conversation:", data.error);
         }
       } else if (handymanId && handymanName) {
-        const intent = params.get("intent"); // ✅ new
+        const intent = params.get("intent");
 
-        console.log("Creating handyman conversation:", {
-          handymanId,
-          handymanName,
-          intent,
-        });
-
-        // ✅ Different initial message if it's a quote request
         const initialMessage =
           intent === "quote"
-            ? `Hi ${handymanName}, I’d like to request a quote for ${
+            ? `Hi ${handymanName}, I'd like to request a quote for ${
                 service || "a project"
               }. Can you provide details?`
             : `Hi ${handymanName}! I'd like to discuss a ${
@@ -284,9 +357,6 @@ export default function MessagesPage() {
         const data = await response.json();
         if (data.success) {
           conversationId = data.conversationId;
-          console.log("Handyman conversation result:", data.message);
-        } else {
-          console.error("Failed to create handyman conversation:", data.error);
         }
       }
 
@@ -301,7 +371,7 @@ export default function MessagesPage() {
     }
   };
 
-  // ✅ Your original useEffect - unchanged
+  // Initialize
   useEffect(() => {
     const initialize = async () => {
       if (initializedRef.current) return;
@@ -333,37 +403,38 @@ export default function MessagesPage() {
     };
   }, []);
 
-  // ✅ Cleanup Socket.io on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
       if (selectedConversationId) {
         leaveConversation(selectedConversationId);
         stopTyping(selectedConversationId);
       }
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
     };
   }, [selectedConversationId, leaveConversation, stopTyping]);
 
+  // Send message
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedConversationId || sending) return;
 
     setSending(true);
     const messageContent = newMessage.trim();
-    setNewMessage(""); // Clear input immediately
+    setNewMessage("");
 
     try {
-      // Stop typing indicator
       stopTyping(selectedConversationId);
 
-      // Always create a tempId for optimistic message
       const tempId = `temp-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2)}`;
 
-      // Add optimistic message immediately
       const optimisticMessage: Message = {
         id: tempId,
         tempId,
-        conversationId: selectedConversationId, // ✅ now included
+        conversationId: selectedConversationId,
         senderId: session?.user?.id || "",
         senderName: "You",
         content: messageContent,
@@ -377,9 +448,10 @@ export default function MessagesPage() {
         canDelete: true,
         isOptimistic: true,
       };
+
+      // Add optimistic message
       setMessages((prev) => [...prev, optimisticMessage]);
 
-      // Call backend to persist message
       const response = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -396,7 +468,7 @@ export default function MessagesPage() {
             msg.tempId === tempId
               ? {
                   ...data.message,
-                  conversationId: selectedConversationId, // ✅ keep consistency
+                  conversationId: selectedConversationId,
                   canEdit: true,
                   canDelete: true,
                   isOptimistic: false,
@@ -405,21 +477,21 @@ export default function MessagesPage() {
           )
         );
 
-        loadConversations(); // Refresh last message
+        socketSendMessage(selectedConversationId, messageContent);
+        loadConversations();
       } else {
-        // Remove optimistic message on error
         setMessages((prev) => prev.filter((msg) => msg.tempId !== tempId));
-        setNewMessage(messageContent); // Restore message in input
+        setNewMessage(messageContent);
       }
     } catch (error) {
       console.error("Failed to send message:", error);
-      setNewMessage(messageContent); // Restore message in input
+      setNewMessage(messageContent);
     }
 
     setSending(false);
   };
 
-  // ✅ Handle typing with Socket.io
+  // Handle typing
   const handleInputChange = (value: string) => {
     setNewMessage(value);
 
@@ -438,7 +510,14 @@ export default function MessagesPage() {
     }
   };
 
-  // ✅ Your original edit and delete functions - unchanged
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  // Edit and delete functions
   const editMessage = async (messageId: string) => {
     if (!editContent.trim()) return;
 
@@ -514,7 +593,7 @@ export default function MessagesPage() {
     }
   };
 
-  // ✅ Your original derived state - unchanged
+  // Derived state
   const selectedConversation = conversations.find(
     (c) => c.id === selectedConversationId
   );
@@ -522,82 +601,109 @@ export default function MessagesPage() {
     (p) => p.id !== session?.user?.id
   );
 
-  // ✅ Your original loading UI - unchanged
+  // Loading screen
   if (loading) {
     return (
-      <div className="min-h-[calc(100vh-5rem)] bg-orange-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading messages...</p>
-        </div>
+      <div className="min-h-[calc(100vh-5rem)] bg-gradient-to-br from-orange-50 to-orange-100 flex items-center justify-center">
+        <motion.div
+          className="text-center"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+          <p className="text-slate-600 text-lg">Loading your messages...</p>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] bg-orange-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid lg:grid-cols-12 gap-6 h-[calc(100vh-12rem)]">
-          {/* ✅ Your original conversations list with online status indicators */}
-          <div className="lg:col-span-4 bg-white rounded-3xl shadow-lg border border-orange-100 overflow-hidden">
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-6 text-white">
+    <div className="min-h-[calc(100vh-5rem)] bg-gradient-to-br from-orange-50 to-orange-100">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 lg:py-8">
+        <div className="grid lg:grid-cols-12 gap-2 lg:gap-6 h-[calc(100vh-8rem)] lg:h-[calc(100vh-12rem)]">
+          {/* Conversations List */}
+          <motion.div
+            className={`${
+              isMobile && selectedConversationId ? "hidden" : "block"
+            } lg:col-span-4 bg-white rounded-2xl lg:rounded-3xl shadow-xl border border-orange-200 overflow-hidden`}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-4 lg:p-6 text-white">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-2xl font-bold">Messages</h1>
-                  <p className="text-orange-100">
+                  <h1 className="text-xl lg:text-2xl font-bold">Messages</h1>
+                  <p className="text-orange-100 text-sm lg:text-base">
                     Stay connected with your neighborhood pros
                   </p>
                 </div>
-                {/* connection status indicator */}
                 <div className="flex items-center space-x-2">
-                  <div
+                  <motion.div
                     className={`w-3 h-3 rounded-full ${
                       isConnected ? "bg-green-400" : "bg-red-400"
                     }`}
-                  ></div>
-                  <span className="text-xs">
+                    animate={isConnected ? { scale: [1, 1.2, 1] } : {}}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  />
+                  <span className="text-xs font-medium">
                     {isConnected ? "Online" : "Offline"}
                   </span>
                 </div>
               </div>
             </div>
 
+            {/* Conversations */}
             <div className="overflow-y-auto h-full">
               {conversations.length === 0 ? (
-                <div className="p-8 text-center">
-                  <div className="text-4xl mb-4">💬</div>
+                <motion.div
+                  className="p-8 text-center"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  <div className="text-6xl mb-4">💬</div>
                   <h3 className="font-semibold text-slate-800 mb-2">
                     No messages yet
                   </h3>
                   <p className="text-slate-600 text-sm">
                     Start browsing handymen to begin conversations
                   </p>
-                </div>
+                </motion.div>
               ) : (
-                <div className="space-y-1 p-4">
-                  {conversations.map((conversation) => {
+                <div className="space-y-1 p-2 lg:p-4">
+                  {conversations.map((conversation, index) => {
                     const otherPerson = conversation.participants.find(
                       (p) => p.id !== session?.user?.id
                     );
                     const isOnline = onlineUsers.includes(
                       otherPerson?.id || ""
-                    ); // ✅ Check online status
+                    );
 
                     return (
-                      <div
+                      <motion.div
                         key={conversation.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.01, duration: 0.4 }}
+                        whileHover={{
+                          y: -2,
+                          boxShadow: "0 8px 25px rgba(0,0,0,0.1)",
+                        }}
+                        whileTap={{ y: 0 }}
                         onClick={() => loadMessages(conversation.id)}
-                        className={`p-4 rounded-2xl cursor-pointer transition-all duration-200 relative group ${
+                        className={`p-3 lg:p-4 rounded-xl lg:rounded-2xl cursor-pointer transition-all duration-300 relative group ${
                           selectedConversationId === conversation.id
-                            ? "bg-orange-100 border-orange-300 border-2"
-                            : "hover:bg-slate-50 border-2 border-transparent"
+                            ? "bg-gradient-to-r from-orange-100 to-orange-50 border-orange-300 border-2 shadow-lg"
+                            : "hover:bg-gradient-to-r hover:from-slate-50 hover:to-white border-2 border-transparent hover:shadow-md"
                         }`}
                       >
                         <div className="flex items-start space-x-3">
-                          {/* ✅ Add online indicator to avatar */}
                           <div className="relative">
-                            <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                              <span className="text-white font-bold">
+                            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+                              <span className="text-white font-bold text-sm lg:text-base">
                                 {otherPerson?.name
                                   .split(" ")
                                   .map((n) => n[0])
@@ -605,13 +711,13 @@ export default function MessagesPage() {
                               </span>
                             </div>
                             {isOnline && (
-                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                              <div className="absolute -bottom-1 -right-1 w-3 h-3 lg:w-4 lg:h-4 bg-green-500 border-2 border-white rounded-full" />
                             )}
                           </div>
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-1">
-                              <h3 className="font-semibold text-slate-800 truncate">
+                              <h3 className="font-semibold text-slate-800 truncate text-sm lg:text-base">
                                 {otherPerson?.name}
                               </h3>
                               <span className="text-xs text-slate-500">
@@ -620,12 +726,12 @@ export default function MessagesPage() {
                             </div>
 
                             {conversation.jobContext && (
-                              <div className="text-xs text-blue-600 mb-1">
+                              <div className="text-xs text-blue-600 mb-1 font-medium">
                                 💼 {conversation.jobContext.jobTitle}
                               </div>
                             )}
 
-                            <p className="text-sm text-slate-600 truncate">
+                            <p className="text-xs lg:text-sm text-slate-600 truncate">
                               {conversation.lastMessage?.content ||
                                 "No messages yet"}
                             </p>
@@ -637,30 +743,46 @@ export default function MessagesPage() {
                             e.stopPropagation();
                             deleteConversation(conversation.id);
                           }}
-                          className="absolute top-[-15px] -right-2 p-1 text-slate-400 hover:text-red-600 hover:bg-red-200 rounded opacity-0 group-hover:opacity-100 transition-all duration-200"
+                          className="absolute top-[-8px] -right-2 p-1 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200"
                           title="Delete conversation"
                         >
                           ×
                         </button>
-                      </div>
+                      </motion.div>
                     );
                   })}
                 </div>
               )}
             </div>
-          </div>
+          </motion.div>
 
-          {/* ✅ Your original chat area with typing indicators */}
-          <div className="lg:col-span-8 bg-white rounded-3xl shadow-lg border border-orange-100 overflow-hidden flex flex-col">
+          {/* Chat Area */}
+          <motion.div
+            className={`${
+              isMobile && !selectedConversationId ? "hidden" : "block"
+            } lg:col-span-8 bg-white rounded-2xl lg:rounded-3xl shadow-xl border border-orange-200 overflow-hidden flex flex-col`}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
             {selectedConversationId ? (
               <>
-                {/* ✅ Your original chat header with online status */}
-                <div className="border-b border-slate-200 p-6">
+                {/* Chat Header */}
+                <div className="border-b border-slate-200 p-4 lg:p-6 bg-gradient-to-r from-white to-orange-50">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-3 lg:space-x-4">
+                      {isMobile && (
+                        <button
+                          onClick={() => setSelectedConversationId(null)}
+                          className="p-2 hover:bg-orange-100 rounded-lg transition-colors"
+                        >
+                          ←
+                        </button>
+                      )}
+
                       <div className="relative">
-                        <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center">
-                          <span className="text-white font-bold">
+                        <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center shadow-md">
+                          <span className="text-white font-bold text-sm lg:text-base">
                             {otherParticipant?.name
                               .split(" ")
                               .map((n) => n[0])
@@ -668,24 +790,27 @@ export default function MessagesPage() {
                           </span>
                         </div>
                         {onlineUsers.includes(otherParticipant?.id || "") && (
-                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                          <div className="absolute -bottom-1 -right-1 w-3 h-3 lg:w-4 lg:h-4 bg-green-500 border-2 border-white rounded-full" />
                         )}
                       </div>
+
                       <div>
-                        <h2 className="text-xl font-bold text-slate-800">
+                        <h2 className="text-lg lg:text-xl font-bold text-slate-800">
                           {otherParticipant?.name}
                         </h2>
-                        <p className="text-slate-500 capitalize">
-                          {otherParticipant?.role}
+                        <div className="flex items-center space-x-2">
+                          <p className="text-slate-500 capitalize text-sm">
+                            {otherParticipant?.role}
+                          </p>
                           {onlineUsers.includes(otherParticipant?.id || "") && (
-                            <span className="text-green-600 ml-2">
+                            <span className="text-green-600 text-xs font-medium">
                               • Online
                             </span>
                           )}
-                        </p>
+                        </div>
 
                         {selectedConversation?.jobContext && (
-                          <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                          <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
                             <span className="font-semibold text-blue-800">
                               💼 Job:
                             </span>
@@ -707,26 +832,37 @@ export default function MessagesPage() {
                   </div>
                 </div>
 
-                {/* ✅ Your original messages area with optimistic updates */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                  {messages.map((message) => {
+                {/* Messages Area with PROPER SCROLL */}
+                <div
+                  ref={messagesContainerRef}
+                  onScroll={handleScroll}
+                  className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-3 lg:space-y-4 bg-gradient-to-b from-orange-25 to-white"
+                  style={{
+                    scrollBehavior: "smooth",
+                    overflowAnchor: "none",
+                  }}
+                >
+                  {messages.map((message, index) => {
                     const isOwn = message.senderId === session?.user?.id;
                     const isEditing = editingId === message.id;
 
                     return (
-                      <div
+                      <motion.div
                         key={message.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2 }}
                         className={`flex ${
                           isOwn ? "justify-end" : "justify-start"
                         }`}
                       >
                         <div
-                          className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl relative group ${
+                          className={`max-w-[85%] sm:max-w-xs lg:max-w-md px-3 lg:px-4 py-2 lg:py-3 rounded-2xl relative group transition-all duration-200 ${
                             isOwn
-                              ? `bg-orange-500 text-white ${
+                              ? `bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg ${
                                   message.isOptimistic ? "opacity-70" : ""
                                 }`
-                              : "bg-slate-100 text-slate-800"
+                              : "bg-gradient-to-br from-slate-100 to-slate-50 text-slate-800 shadow-md"
                           }`}
                         >
                           {isEditing ? (
@@ -734,14 +870,14 @@ export default function MessagesPage() {
                               <textarea
                                 value={editContent}
                                 onChange={(e) => setEditContent(e.target.value)}
-                                className="w-full p-2 text-sm bg-white text-slate-800 rounded resize-none"
+                                className="w-full p-2 text-sm bg-white text-slate-800 rounded-lg resize-none border border-slate-200 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                                 rows={2}
                                 autoFocus
                               />
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => editMessage(message.id)}
-                                  className="text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+                                  className="text-xs px-3 py-1 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
                                 >
                                   Save
                                 </button>
@@ -750,7 +886,7 @@ export default function MessagesPage() {
                                     setEditingId(null);
                                     setEditContent("");
                                   }}
-                                  className="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600"
+                                  className="text-xs px-3 py-1 bg-gray-500 text-white rounded-full hover:bg-gray-600 transition-colors"
                                 >
                                   Cancel
                                 </button>
@@ -758,7 +894,7 @@ export default function MessagesPage() {
                             </div>
                           ) : (
                             <>
-                              <p className="text-sm leading-relaxed">
+                              <p className="text-sm lg:text-base leading-relaxed break-words">
                                 {message.content}
                               </p>
                               <div className="flex items-center justify-between mt-2">
@@ -770,7 +906,7 @@ export default function MessagesPage() {
                                   {message.timestamp}
                                 </p>
                                 {message.isOptimistic && (
-                                  <span className="text-xs text-orange-200">
+                                  <span className="text-xs text-orange-200 ml-2">
                                     Sending...
                                   </span>
                                 )}
@@ -778,15 +914,15 @@ export default function MessagesPage() {
 
                               {isOwn &&
                                 (message.canEdit || message.canDelete) && (
-                                  <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <div className="flex gap-1 bg-white rounded shadow-lg border p-1">
+                                  <div className="absolute -top-8 -right-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                    <div className="flex gap-1 bg-white rounded-lg shadow-lg border p-1">
                                       {message.canEdit && (
                                         <button
                                           onClick={() => {
                                             setEditingId(message.id);
                                             setEditContent(message.content);
                                           }}
-                                          className="p-1 text-slate-600 hover:text-blue-600 rounded text-xs"
+                                          className="p-1 text-slate-600 hover:text-blue-600 rounded text-xs transition-colors"
                                           title="Edit"
                                         >
                                           ✏️
@@ -797,7 +933,7 @@ export default function MessagesPage() {
                                           onClick={() =>
                                             deleteMessage(message.id)
                                           }
-                                          className="p-1 text-slate-600 hover:text-red-600 rounded text-xs"
+                                          className="p-1 text-slate-600 hover:text-red-600 rounded text-xs transition-colors"
                                           title="Delete"
                                         >
                                           🗑️
@@ -809,27 +945,38 @@ export default function MessagesPage() {
                             </>
                           )}
                         </div>
-                      </div>
+                      </motion.div>
                     );
                   })}
 
-                  {/* ✅ Add typing indicators */}
+                  {/* Typing Indicators */}
                   {currentTypingUsers.length > 0 && (
-                    <div className="flex justify-start">
-                      <div className="bg-slate-100 text-slate-600 px-4 py-2 rounded-2xl">
+                    <motion.div
+                      className="flex justify-start"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                    >
+                      <div className="bg-gradient-to-br from-slate-100 to-slate-50 text-slate-600 px-4 py-3 rounded-2xl shadow-md">
                         <div className="flex items-center space-x-2">
                           <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
-                            <div
-                              className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                              style={{ animationDelay: "0.1s" }}
-                            ></div>
-                            <div
-                              className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"
-                              style={{ animationDelay: "0.2s" }}
-                            ></div>
+                            {[0, 1, 2].map((i) => (
+                              <motion.div
+                                key={i}
+                                className="w-2 h-2 bg-slate-400 rounded-full"
+                                animate={{
+                                  y: [0, -8, 0],
+                                  opacity: [0.4, 1, 0.4],
+                                }}
+                                transition={{
+                                  duration: 1.5,
+                                  repeat: Infinity,
+                                  delay: i * 0.2,
+                                }}
+                              />
+                            ))}
                           </div>
-                          <span className="text-xs">
+                          <span className="text-xs font-medium">
                             {currentTypingUsers
                               .map((user) => user.userName)
                               .join(", ")}{" "}
@@ -837,54 +984,56 @@ export default function MessagesPage() {
                           </span>
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
 
-                {/* ✅ Your original message input with typing integration */}
-                <div className="border-t border-slate-200 p-6">
-                  <div className="flex space-x-4">
+                {/* Message Input */}
+                <div className="border-t border-slate-200 p-4 lg:p-6 bg-gradient-to-r from-white to-orange-50">
+                  <div className="flex space-x-3 lg:space-x-4">
                     <input
+                      ref={inputRef}
                       type="text"
                       value={newMessage}
                       onChange={(e) => handleInputChange(e.target.value)}
                       onBlur={handleInputBlur}
-                      onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                      onKeyPress={handleKeyPress}
                       placeholder="Type your message..."
-                      className="flex-1 px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                      className="flex-1 px-4 py-3 border border-slate-200 rounded-xl lg:rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 bg-white shadow-sm text-sm lg:text-base"
                       disabled={sending}
                     />
                     <Button
                       onClick={sendMessage}
                       disabled={!newMessage.trim() || sending}
-                      className="bg-orange-500 hover:bg-orange-600 disabled:bg-slate-300 px-6 py-3 rounded-xl"
+                      className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-slate-300 disabled:to-slate-400 px-4 lg:px-6 py-3 rounded-xl lg:rounded-2xl text-white font-medium shadow-lg transition-all duration-200"
                     >
                       {sending ? "Sending..." : "Send"}
                     </Button>
                   </div>
+
                   {!isConnected && (
-                    <p className="text-xs text-amber-600 mt-2">
-                      Real-time messaging offline - messages will still be
+                    <p className="text-xs text-amber-600 mt-2 font-medium">
+                      ⚠️ Real-time messaging offline - messages will still be
                       delivered
                     </p>
                   )}
                 </div>
               </>
             ) : (
-              // ✅ Your original empty state - unchanged
-              <div className="flex-1 flex items-center justify-center">
+              // Empty State
+              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-orange-25 to-white">
                 <div className="text-center">
-                  <div className="text-6xl mb-4">💬</div>
-                  <h3 className="text-2xl font-bold text-slate-800 mb-2">
+                  <div className="text-6xl lg:text-8xl mb-6">💬</div>
+                  <h3 className="text-xl lg:text-2xl font-bold text-slate-800 mb-3">
                     Select a conversation
                   </h3>
-                  <p className="text-slate-600">
+                  <p className="text-slate-600 text-sm lg:text-base">
                     Choose a conversation from the left to start messaging
                   </p>
                 </div>
               </div>
             )}
-          </div>
+          </motion.div>
         </div>
       </div>
     </div>

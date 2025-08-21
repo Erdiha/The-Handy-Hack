@@ -160,6 +160,18 @@ export const neighborhoods = pgTable("neighborhoods", {
   city: text("city").notNull(),
   state: text("state").notNull(),
 });
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id")
+    .references(() => conversations.id, { onDelete: "cascade" }) // Add this
+    .notNull(),
+  senderId: integer("sender_id")
+    .references(() => users.id)
+    .notNull(),
+  content: text("content").notNull(),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 export const jobs = pgTable("jobs", {
   id: serial("id").primaryKey(),
@@ -195,18 +207,5 @@ export const conversations = pgTable("conversations", {
     .references(() => users.id)
     .notNull(),
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const messages = pgTable("messages", {
-  id: serial("id").primaryKey(),
-  conversationId: integer("conversation_id")
-    .references(() => conversations.id)
-    .notNull(),
-  senderId: integer("sender_id")
-    .references(() => users.id)
-    .notNull(),
-  content: text("content").notNull(),
-  isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
@@ -172,6 +172,7 @@ function HandymanDashboard({
   const [completedJobs, setCompletedJobs] = useState<Job[]>([]);
   const [archivedJobs, setArchivedJobs] = useState<Job[]>([]);
   const [jobActionLoading, setJobActionLoading] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [useScheduledAvailability, setUseScheduledAvailability] =
     useState(false);
@@ -343,16 +344,19 @@ function HandymanDashboard({
 
   const fetchAvailabilityStatus = async () => {
     try {
-      console.log("🔍 Fetching availability status..."); // Debug log
+      console.log("🔍 Fetching availability status for user:", user.id);
 
+      // Fix: Add handyman ID to the request
       const response = await fetch("/api/handyman/availability");
+
       const data = await response.json();
 
-      console.log("📡 Availability API response:", data); // Debug log
+      console.log("📡 Availability API response:", data);
 
       if (data.success && typeof data.isAvailable === "boolean") {
-        console.log("✅ Setting isAvailable to:", data.isAvailable); // Debug log
+        console.log("✅ Setting isAvailable to:", data.isAvailable);
         setIsAvailable(data.isAvailable);
+        setUseScheduledAvailability(data.useScheduledAvailability ?? false);
       } else {
         console.warn("⚠️ Unexpected availability API response:", data);
         // Fallback: check profile endpoint
@@ -367,23 +371,19 @@ function HandymanDashboard({
             "✅ Setting isAvailable from profile to:",
             profileData.isAvailable
           );
-          console.log(
-            "✅ Setting useScheduledAvailability from profile to:",
-            profileData.useScheduledAvailability
-          );
           setIsAvailable(profileData.isAvailable);
           setUseScheduledAvailability(
             profileData.useScheduledAvailability ?? false
-          ); // ADD THIS LINE
+          );
         } else {
           console.warn("⚠️ No availability data found, defaulting to false");
           setIsAvailable(false);
-          setUseScheduledAvailability(false); // ADD THIS LINE
+          setUseScheduledAvailability(false);
         }
       }
     } catch (error) {
       console.error("❌ Failed to fetch availability:", error);
-      setIsAvailable(false); // Default to offline on error
+      setIsAvailable(false);
     }
   };
 
@@ -400,10 +400,6 @@ function HandymanDashboard({
       setEarningsLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchMyJobs();
-  }, []);
 
   const fetchMyJobs = async () => {
     try {
@@ -438,35 +434,39 @@ function HandymanDashboard({
       const data = await response.json();
 
       if (data.success) {
-        // 🔧 FIX 4: Use the returned value, not the local calculation
         const returnedAvailability = data.isAvailable;
         console.log("✅ API returned isAvailable:", returnedAvailability);
 
         setIsAvailable(returnedAvailability);
 
+        // Refresh jobs list
+        await fetchMyJobs();
+
         setToast({
           isVisible: true,
-          message:
-            data.message ||
-            `Status updated to ${
-              returnedAvailability ? "Available" : "Offline"
-            }`,
+          message: data.message || "Job completed successfully",
           type: "success",
         });
 
-        // 🔧 FIX 5: Optional: Refetch to ensure sync
-        setTimeout(() => {
+        // Fix: Use the same timeout cleanup pattern
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+
+        timeoutRef.current = setTimeout(() => {
           fetchAvailabilityStatus();
+          timeoutRef.current = null;
         }, 500);
       } else {
-        console.error("❌ Toggle failed:", data.error);
+        console.error("❌ Complete job failed:", data.error);
         setToast({
           isVisible: true,
-          message: data.error || "Failed to update availability",
+          message: data.error || "Failed to complete job",
           type: "error",
         });
       }
     } catch (error) {
+      console.error("❌ Complete job request failed:", error);
       setToast({
         isVisible: true,
         message: "Failed to complete job",
@@ -483,8 +483,11 @@ function HandymanDashboard({
       type: "success",
     });
   };
+  // Add this ref at the top of HandymanDashboard component
+
+  // Replace handleAvailabilityToggle function
   const handleAvailabilityToggle = async () => {
-    if (isAvailable === null) return; // Don't toggle if status unknown
+    if (isAvailable === null) return;
 
     const newAvailabilityState = !isAvailable;
     console.log(
@@ -504,10 +507,9 @@ function HandymanDashboard({
       });
 
       const data = await response.json();
-      console.log("📡 Toggle API response:", data); // Debug log
+      console.log("📡 Toggle API response:", data);
 
       if (data.success) {
-        // 🔧 FIX 4: Use the returned value, not the local calculation
         const returnedAvailability = data.isAvailable;
         console.log("✅ API returned isAvailable:", returnedAvailability);
 
@@ -523,9 +525,14 @@ function HandymanDashboard({
           type: "success",
         });
 
-        // 🔧 FIX 5: Optional: Refetch to ensure sync
-        setTimeout(() => {
+        // Fix: Clear existing timeout and add cleanup
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+
+        timeoutRef.current = setTimeout(() => {
           fetchAvailabilityStatus();
+          timeoutRef.current = null;
         }, 500);
       } else {
         console.error("❌ Toggle failed:", data.error);
@@ -547,6 +554,14 @@ function HandymanDashboard({
     }
   };
 
+  // Add cleanup useEffect
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
   // Add this component inside HandymanDashboard function, before the return statement
   const JobItem = ({ job }: { job: Job }) => (
     <div className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-gray-100 mb-5">
