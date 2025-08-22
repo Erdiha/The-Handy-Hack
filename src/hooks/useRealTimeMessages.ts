@@ -1,12 +1,37 @@
-// Replace: src/hooks/useRealTimeMessages.ts
+// Updated: src/hooks/useRealTimeMessages.ts
 import { useEffect, useRef, useState, useCallback } from "react";
-import { io, Socket } from "socket.io-client";
 import { useSession } from "next-auth/react";
-import type {
-  ClientToServerEvents,
-  ServerToClientEvents,
-  SocketMessage,
-} from "@/types/socket";
+import { useNotifications } from "@/contexts/NotificationContext";
+import { Socket } from "socket.io-client";
+
+// Extend Window interface for global socket
+declare global {
+  interface Window {
+    globalSocket?: Socket;
+  }
+}
+
+interface SocketMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  timestamp: string;
+  isRead: boolean;
+}
+
+interface UserData {
+  userId: string;
+  userName: string;
+  timestamp?: Date;
+}
+
+interface TypingData {
+  userId: string;
+  userName: string;
+  conversationId: string;
+}
 
 export interface Message {
   id: string;
@@ -30,10 +55,8 @@ export const useRealTimeMessages = ({
   enabled = true,
 }: UseRealTimeConfig) => {
   const { data: session } = useSession();
-  const [socket, setSocket] = useState<Socket<
-    ServerToClientEvents,
-    ClientToServerEvents
-  > | null>(null);
+  const { setActiveConversation } = useNotifications();
+
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [typingUsers, setTypingUsers] = useState<
@@ -44,37 +67,33 @@ export const useRealTimeMessages = ({
     }>
   >([]);
 
-  // Initialize socket connection
+  // Get global socket from window (set by NotificationContext)
+  const getGlobalSocket = useCallback((): Socket | null => {
+    return window.globalSocket || null;
+  }, []);
+
+  // Set up message event listeners when conversation changes
   useEffect(() => {
-    if (!enabled || !session?.user) return;
+    if (!enabled || !session?.user || !conversationId) return;
 
-    const socketInstance = io({
-      path: "/socket.io",
-    });
+    const socket = getGlobalSocket();
+    if (!socket) {
+      console.log("⚠️ [MESSAGES] Waiting for global socket...");
+      return;
+    }
 
-    socketInstance.on("connect", () => {
-      console.log("Connected to Socket.io server");
-      setIsConnected(true);
+    console.log(
+      "📡 [MESSAGES] Setting up message listeners for conversation:",
+      conversationId
+    );
 
-      // Authenticate user
-      socketInstance.emit("authenticate", {
-        userId: session.user.id,
-        userName: session.user.name,
-      });
-      console.log("📤 Sending authenticate event:", {
-        userId: session.user.id,
-        userName: session.user.name,
-      }); // ADD THIS LINE
-    });
-
-    socketInstance.on("disconnect", () => {
-      console.log("Disconnected from Socket.io server");
-      setIsConnected(false);
-    });
+    // Set active conversation for notification suppression
+    setActiveConversation(conversationId);
 
     // Handle new messages
-    socketInstance.on("new_message", (socketMessage: SocketMessage) => {
-      if (onNewMessage) {
+    const handleNewMessage = (socketMessage: SocketMessage): void => {
+      console.log("📨 [MESSAGES] Received new message:", socketMessage);
+      if (onNewMessage && socketMessage.conversationId === conversationId) {
         const message: Message = {
           id: socketMessage.id,
           senderId: socketMessage.senderId,
@@ -86,72 +105,125 @@ export const useRealTimeMessages = ({
         };
         onNewMessage(message);
       }
-    });
+    };
 
     // Handle online users
-    socketInstance.on("online_users", (userIds: string[]) => {
+    const handleOnlineUsers = (userIds: string[]): void => {
       setOnlineUsers(userIds);
-    });
+    };
 
-    socketInstance.on("user_online", (data) => {
+    const handleUserOnline = (data: UserData): void => {
       setOnlineUsers((prev) => [
         ...prev.filter((id) => id !== data.userId),
         data.userId,
       ]);
-    });
+    };
 
-    socketInstance.on("user_offline", (data) => {
+    const handleUserOffline = (data: UserData): void => {
       setOnlineUsers((prev) => prev.filter((id) => id !== data.userId));
-    });
+    };
 
     // Handle typing indicators
-    socketInstance.on("user_started_typing", (data) => {
-      setTypingUsers((prev) => [
-        ...prev.filter(
-          (user) =>
-            !(
-              user.userId === data.userId &&
-              user.conversationId === data.conversationId
-            )
-        ),
-        data,
-      ]);
-    });
-
-    socketInstance.on("user_stopped_typing", (data) => {
-      setTypingUsers((prev) =>
-        prev.filter(
-          (user) =>
-            !(
-              user.userId === data.userId &&
-              user.conversationId === data.conversationId
-            )
-        )
-      );
-    });
-
-    setSocket(socketInstance);
-
-    return () => {
-      socketInstance.disconnect();
+    const handleTypingStart = (data: TypingData): void => {
+      if (data.conversationId === conversationId) {
+        setTypingUsers((prev) => [
+          ...prev.filter(
+            (user) =>
+              !(
+                user.userId === data.userId &&
+                user.conversationId === data.conversationId
+              )
+          ),
+          data,
+        ]);
+      }
     };
-  }, [enabled, session?.user, onNewMessage]);
 
-  // Join/leave conversations
-  useEffect(() => {
-    if (!socket || !conversationId) return;
+    const handleTypingStop = (data: TypingData): void => {
+      if (data.conversationId === conversationId) {
+        setTypingUsers((prev) =>
+          prev.filter(
+            (user) =>
+              !(
+                user.userId === data.userId &&
+                user.conversationId === data.conversationId
+              )
+          )
+        );
+      }
+    };
 
+    // Add event listeners
+    socket.on("new_message", handleNewMessage);
+    socket.on("online_users", handleOnlineUsers);
+    socket.on("user_online", handleUserOnline);
+    socket.on("user_offline", handleUserOffline);
+    socket.on("user_started_typing", handleTypingStart);
+    socket.on("user_stopped_typing", handleTypingStop);
+
+    // Join conversation room
     socket.emit("join_conversation", conversationId);
+    console.log("🚪 [MESSAGES] Joined conversation room:", conversationId);
 
+    // Cleanup function
     return () => {
+      console.log(
+        "🧹 [MESSAGES] Cleaning up message listeners for conversation:",
+        conversationId
+      );
+
+      // Remove event listeners
+      socket.off("new_message", handleNewMessage);
+      socket.off("online_users", handleOnlineUsers);
+      socket.off("user_online", handleUserOnline);
+      socket.off("user_offline", handleUserOffline);
+      socket.off("user_started_typing", handleTypingStart);
+      socket.off("user_stopped_typing", handleTypingStop);
+
+      // Leave conversation room
       socket.emit("leave_conversation", conversationId);
+
+      // Clear active conversation
+      setActiveConversation(null);
+
+      // Clear typing indicators
+      setTypingUsers([]);
     };
-  }, [socket, conversationId]);
+  }, [
+    conversationId,
+    enabled,
+    session?.user,
+    onNewMessage,
+    setActiveConversation,
+    getGlobalSocket,
+  ]);
+
+  // Monitor global socket connection status
+  useEffect(() => {
+    const checkConnection = () => {
+      const socket = getGlobalSocket();
+      setIsConnected(socket?.connected || false);
+    };
+
+    // Check immediately
+    checkConnection();
+
+    // Check periodically
+    const interval = setInterval(checkConnection, 1000);
+
+    return () => clearInterval(interval);
+  }, [getGlobalSocket]);
 
   // Socket.io functions
   const sendMessage = useCallback(
     (conversationId: string, content: string): string => {
-      if (!socket) return "";
+      const socket = getGlobalSocket();
+      if (!socket) {
+        console.error(
+          "❌ [MESSAGES] No global socket available for sending message"
+        );
+        return "";
+      }
 
       const tempId = `temp-${Date.now()}-${Math.random()
         .toString(36)
@@ -164,45 +236,58 @@ export const useRealTimeMessages = ({
         senderName: session?.user?.name || "You",
       });
 
+      console.log("📤 [MESSAGES] Sent message via global socket");
       return tempId;
     },
-    [socket, session?.user?.name]
+    [session?.user?.name, getGlobalSocket]
   );
 
   const joinConversation = useCallback(
     (conversationId: string) => {
+      const socket = getGlobalSocket();
       if (socket) {
         socket.emit("join_conversation", conversationId);
+        console.log(
+          "🚪 [MESSAGES] Manually joined conversation:",
+          conversationId
+        );
       }
     },
-    [socket]
+    [getGlobalSocket]
   );
 
   const leaveConversation = useCallback(
     (conversationId: string) => {
+      const socket = getGlobalSocket();
       if (socket) {
         socket.emit("leave_conversation", conversationId);
+        console.log(
+          "👋 [MESSAGES] Manually left conversation:",
+          conversationId
+        );
       }
     },
-    [socket]
+    [getGlobalSocket]
   );
 
   const startTyping = useCallback(
     (conversationId: string) => {
+      const socket = getGlobalSocket();
       if (socket) {
         socket.emit("typing_start", { conversationId });
       }
     },
-    [socket]
+    [getGlobalSocket]
   );
 
   const stopTyping = useCallback(
     (conversationId: string) => {
+      const socket = getGlobalSocket();
       if (socket) {
         socket.emit("typing_stop", { conversationId });
       }
     },
-    [socket]
+    [getGlobalSocket]
   );
 
   return {

@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   decimal,
+  unique,
 } from "drizzle-orm/pg-core";
 
 // ADD THESE TWO TABLES to your existing schema.ts file
@@ -29,24 +30,36 @@ export const handymanProfiles = pgTable("handyman_profiles", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const notifications = pgTable("notifications", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id),
-  type: varchar("type", { length: 50 }).notNull(), // 'message', 'job_response', 'booking', 'system'
-  title: varchar("title", { length: 255 }).notNull(),
-  body: text("body").notNull(),
-  conversationId: integer("conversation_id").references(() => conversations.id),
-  jobId: integer("job_id").references(() => jobs.id),
-  actionUrl: varchar("action_url", { length: 500 }),
-  priority: varchar("priority", { length: 20 }).notNull().default("normal"), // 'low', 'normal', 'high', 'urgent'
-  metadata: jsonb("metadata"), // Additional data as JSON
-  readAt: timestamp("read_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  expiresAt: timestamp("expires_at"),
-});
-// Add these tables to your existing schema.ts file
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id),
+    type: varchar("type", { length: 50 }).notNull(), // 'message', 'job_response', 'booking', 'system'
+    title: varchar("title", { length: 255 }).notNull(),
+    body: text("body").notNull(),
+    conversationId: integer("conversation_id").references(
+      () => conversations.id
+    ),
+    jobId: integer("job_id").references(() => jobs.id),
+    actionUrl: varchar("action_url", { length: 500 }),
+    priority: varchar("priority", { length: 20 }).notNull().default("normal"), // 'low', 'normal', 'high', 'urgent'
+    metadata: jsonb("metadata"), // Additional data as JSON
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    expiresAt: timestamp("expires_at"),
+  },
+  (table) => ({
+    // Add unique constraint for one notification per conversation per user
+    uniqueConversationNotification: unique().on(
+      table.userId,
+      table.conversationId,
+      table.type
+    ),
+  })
+);
 
 // Reviews system
 export const reviews = pgTable("reviews", {
@@ -171,6 +184,7 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  hiddenForUsers: integer("hidden_for_users").array().default([]),
 });
 
 export const jobs = pgTable("jobs", {
@@ -208,4 +222,5 @@ export const conversations = pgTable("conversations", {
     .notNull(),
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  hiddenForUsers: integer("hidden_for_users").array().default([]),
 });

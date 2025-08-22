@@ -6,13 +6,15 @@ import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { NotificationButton } from "../NotificationButton";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { data: session } = useSession();
   const pathname = usePathname();
+  const { unreadMessageCount } = useNotifications();
 
-  // Clean business logic - different nav items for different user types
+  // different nav items for different user types
   const getNavigationItems = () => {
     if (!session) {
       return [
@@ -48,8 +50,8 @@ export function Navbar() {
       animate={{ y: 0 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
+      <div className="max-w-7xl mx-auto ">
+        <div className="flex justify-around items-center h-20">
           {/* Logo */}
           <motion.div
             className="flex items-center"
@@ -65,21 +67,24 @@ export function Navbar() {
           </motion.div>
 
           {/* Desktop Navigation - Clean & Grouped */}
-          <nav className="hidden lg:flex items-center space-x-6">
-            {navigationItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-orange-100 hover:text-orange-600 ${
-                  pathname === item.href
-                    ? "text-orange-600 bg-orange-100"
-                    : "text-slate-700"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          {navigationItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`relative px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-orange-100 hover:text-orange-600 ${
+                pathname === item.href
+                  ? "text-orange-600 bg-orange-100"
+                  : "text-slate-700"
+              }`}
+            >
+              {item.label}
+              {item.label === "Messages" && unreadMessageCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center">
+                  {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
+                </span>
+              )}
+            </Link>
+          ))}
 
           {/* Right Section - Clean & Minimal */}
           <div className="flex items-center space-x-4">

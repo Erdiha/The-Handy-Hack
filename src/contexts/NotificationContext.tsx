@@ -1,359 +1,241 @@
-// contexts/NotificationContext.tsx - CREATE THIS NEW FILE
-
 "use client";
 
-import React, {
+import {
   createContext,
   useContext,
-  useReducer,
+  useState,
   useEffect,
-  useCallback,
+  ReactNode,
+  useRef,
 } from "react";
 import { useSession } from "next-auth/react";
-import {
-  NotificationData,
-  NotificationPreferences,
-} from "@/types/notificantions";
+import { io, Socket } from "socket.io-client";
 
-interface NotificationState {
-  notifications: NotificationData[];
-  unreadCount: number;
-  preferences: NotificationPreferences;
-  isInitialized: boolean;
-  pushPermission: NotificationPermission | null;
-}
-
-type NotificationAction =
-  | {
-      type: "INIT";
-      payload: {
-        notifications: NotificationData[];
-        preferences: NotificationPreferences;
-      };
-    }
-  | { type: "ADD_NOTIFICATION"; payload: NotificationData }
-  | { type: "MARK_READ"; payload: string }
-  | { type: "MARK_ALL_READ" }
-  | { type: "REMOVE_NOTIFICATION"; payload: string }
-  | { type: "UPDATE_PREFERENCES"; payload: NotificationPreferences }
-  | { type: "SET_PUSH_PERMISSION"; payload: NotificationPermission };
-
-const initialState: NotificationState = {
-  notifications: [],
-  unreadCount: 0,
-  preferences: {
-    browser: true,
-    sound: true,
-    email: true,
-    sms: false,
-    quietHours: { enabled: false, start: "22:00", end: "08:00" },
-  },
-  isInitialized: false,
-  pushPermission: null,
-};
-
-function notificationReducer(
-  state: NotificationState,
-  action: NotificationAction
-): NotificationState {
-  switch (action.type) {
-    case "INIT":
-      return {
-        ...state,
-        notifications: action.payload.notifications,
-        preferences: action.payload.preferences,
-        unreadCount: action.payload.notifications.filter((n) => !n.readAt)
-          .length,
-        isInitialized: true,
-      };
-
-    case "ADD_NOTIFICATION":
-      const newNotifications = [action.payload, ...state.notifications];
-      return {
-        ...state,
-        notifications: newNotifications,
-        unreadCount: state.unreadCount + 1,
-      };
-
-    case "MARK_READ":
-      const updatedNotifications = state.notifications.map((n) =>
-        n.id === action.payload ? { ...n, readAt: new Date() } : n
-      );
-      return {
-        ...state,
-        notifications: updatedNotifications,
-        unreadCount: Math.max(0, state.unreadCount - 1),
-      };
-
-    case "MARK_ALL_READ":
-      return {
-        ...state,
-        notifications: state.notifications.map((n) => ({
-          ...n,
-          readAt: new Date(),
-        })),
-        unreadCount: 0,
-      };
-
-    case "REMOVE_NOTIFICATION":
-      const filtered = state.notifications.filter(
-        (n) => n.id !== action.payload
-      );
-      const wasUnread = state.notifications.find(
-        (n) => n.id === action.payload && !n.readAt
-      );
-      return {
-        ...state,
-        notifications: filtered,
-        unreadCount: wasUnread
-          ? Math.max(0, state.unreadCount - 1)
-          : state.unreadCount,
-      };
-
-    case "UPDATE_PREFERENCES":
-      return {
-        ...state,
-        preferences: action.payload,
-      };
-
-    case "SET_PUSH_PERMISSION":
-      return {
-        ...state,
-        pushPermission: action.payload,
-      };
-
-    default:
-      return state;
+declare global {
+  interface Window {
+    globalSocket?: Socket;
   }
+}
+// Notification object interface
+export interface Notification {
+  id: string;
+  type: "message" | "job_response" | "booking" | "system";
+  title: string;
+  body: string;
+  actionUrl?: string;
+  conversationId?: string;
+  jobId?: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  isRead: boolean;
+  createdAt: string;
+  timeAgo: string;
 }
 
 interface NotificationContextType {
-  state: NotificationState;
-  addNotification: (
-    notification: Omit<NotificationData, "id" | "createdAt">
-  ) => void;
-  markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
-  removeNotification: (id: string) => void;
-  updatePreferences: (preferences: NotificationPreferences) => void;
-  requestBrowserPermission: () => Promise<boolean>;
-  showBrowserNotification: (notification: NotificationData) => void;
-  playNotificationSound: () => void;
+  // Notification objects and counts
+  notifications: Notification[];
+  unreadCount: number;
+  unreadMessageCount: number;
+
+  // Actions
+  refreshNotifications: () => Promise<void>;
+  markAsRead: (notificationId: string) => Promise<void>;
+  setActiveConversation: (conversationId: string | null) => void;
+
+  // Loading state
+  loading: boolean;
+
+  // Socket state
+  isConnected: boolean;
 }
 
-const NotificationContext = createContext<NotificationContextType | null>(null);
+const NotificationContext = createContext<NotificationContextType | undefined>(
+  undefined
+);
 
-export function NotificationProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function NotificationProvider({ children }: { children: ReactNode }) {
   const { data: session } = useSession();
-  const [state, dispatch] = useReducer(notificationReducer, initialState);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
 
-  // Initialize notifications and preferences
-  useEffect(() => {
-    if (session?.user?.id && !state.isInitialized) {
-      initializeNotifications();
-      checkBrowserPermission();
+  // Track active conversation to suppress notifications
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
+
+  // Socket reference
+  const socketRef = useRef<Socket | null>(null);
+
+  // Load notifications function
+  const loadNotifications = async () => {
+    if (!session?.user?.id) return;
+
+    setLoading(true);
+    try {
+      console.log(
+        "🔔 [GLOBAL] Fetching notifications for user:",
+        session.user.id
+      );
+      const response = await fetch("/api/notifications?limit=20");
+      const data = await response.json();
+
+      console.log("🔔 [GLOBAL] Notification API response:", data);
+
+      if (data.success) {
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+        setUnreadMessageCount(data.unreadMessageCount || 0);
+
+        console.log(
+          "🔔 [GLOBAL] Updated counts - unread:",
+          data.unreadCount,
+          "messages:",
+          data.unreadMessageCount
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load notifications:", error);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  // Refresh notifications function
+  const refreshNotifications = async () => {
+    if (!session?.user?.id) return;
+
+    try {
+      console.log("🔔 [GLOBAL] Refreshing notifications...");
+      const response = await fetch("/api/notifications?limit=20");
+      const data = await response.json();
+
+      if (data.success) {
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+        setUnreadMessageCount(data.unreadMessageCount || 0);
+
+        console.log("🔔 [GLOBAL] Refreshed counts - unread:", data.unreadCount);
+      }
+    } catch (error) {
+      console.error("Failed to refresh notifications:", error);
+    }
+  };
+
+  // Mark individual notification as read
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const response = await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationId }),
+      });
+
+      if (response.ok) {
+        setNotifications((prev) =>
+          prev.map((notif) =>
+            notif.id === notificationId ? { ...notif, isRead: true } : notif
+          )
+        );
+
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+        console.log("🔔 [GLOBAL] Marked notification as read:", notificationId);
+      }
+    } catch (error) {
+      console.error("Failed to mark notification as read:", error);
+    }
+  };
+
+  // Set active conversation (to suppress notifications)
+  const setActiveConversation = (conversationId: string | null) => {
+    console.log("🔔 [GLOBAL] Active conversation changed:", conversationId);
+    setActiveConversationId(conversationId);
+  };
+
+  // Global Socket.io connection for notifications
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    console.log(
+      "🔔 [GLOBAL] Initializing global notification socket for user:",
+      session.user.id
+    );
+
+    const socket = io({
+      path: "/socket.io",
+    });
+    socket.on("connect", () => {
+      console.log(
+        "🔔 [GLOBAL] Connected to Socket.io server for notifications"
+      );
+      setIsConnected(true);
+
+      // Authenticate user for notifications
+      socket.emit("authenticate", {
+        userId: session.user.id,
+        userName: session.user.name,
+      });
+
+      // Expose socket globally for useRealTimeMessages hook
+      window.globalSocket = socket;
+
+      console.log("🔔 [GLOBAL] Sent authentication for notifications");
+    });
+    socket.on("disconnect", () => {
+      console.log("🔔 [GLOBAL] Disconnected from Socket.io server");
+      setIsConnected(false);
+    });
+
+    // Listen for notification updates globally
+    socket.on("notification_update", (data) => {
+      console.log("🔔 [GLOBAL] Received notification update:", data);
+
+      // Smart suppression: don't refresh if user is actively viewing this conversation
+      if (data.conversationId && data.conversationId === activeConversationId) {
+        console.log(
+          "🔔 [GLOBAL] Suppressing notification - user is actively viewing conversation:",
+          data.conversationId
+        );
+        return;
+      }
+
+      // If user is not viewing this conversation, refresh notifications
+      console.log(
+        "🔔 [GLOBAL] Processing notification update - refreshing counts"
+      );
+      refreshNotifications();
+    });
+
+    socketRef.current = socket;
+
+    return () => {
+      console.log("🔔 [GLOBAL] Cleaning up notification socket");
+      window.globalSocket = undefined; // Clean up global reference
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [session?.user?.id, activeConversationId]);
+
+  // Load initial notifications when user logs in
+  useEffect(() => {
+    loadNotifications();
   }, [session?.user?.id]);
 
-  const initializeNotifications = async () => {
-    try {
-      // For now, initialize with empty data - we'll add API calls later
-      console.log("Initializing notifications for user:", session?.user?.id);
-
-      dispatch({
-        type: "INIT",
-        payload: {
-          notifications: [],
-          preferences: initialState.preferences,
-        },
-      });
-    } catch (error) {
-      console.error("Failed to initialize notifications:", error);
-      dispatch({
-        type: "INIT",
-        payload: { notifications: [], preferences: initialState.preferences },
-      });
-    }
-  };
-
-  const checkBrowserPermission = () => {
-    if ("Notification" in window) {
-      dispatch({
-        type: "SET_PUSH_PERMISSION",
-        payload: Notification.permission,
-      });
-    }
-  };
-
-  const addNotification = useCallback(
-    async (notificationData: Omit<NotificationData, "id" | "createdAt">) => {
-      const notification: NotificationData = {
-        ...notificationData,
-        id: Math.random().toString(36).substr(2, 9),
-        createdAt: new Date(),
-      };
-
-      console.log("Adding notification:", notification);
-
-      // Add to state immediately
-      dispatch({ type: "ADD_NOTIFICATION", payload: notification });
-
-      // Show browser notification if enabled and permission granted
-      if (state.preferences.browser && state.pushPermission === "granted") {
-        showBrowserNotification(notification);
-      }
-
-      // Play sound if enabled
-      if (state.preferences.sound && !isQuietHours()) {
-        playNotificationSound();
-      }
-    },
-    [state.preferences.browser, state.preferences.sound, state.pushPermission]
-  );
-
-  const markAsRead = useCallback(async (id: string) => {
-    console.log("Marking notification as read:", id);
-    dispatch({ type: "MARK_READ", payload: id });
-  }, []);
-
-  const markAllAsRead = useCallback(async () => {
-    console.log("Marking all notifications as read");
-    dispatch({ type: "MARK_ALL_READ" });
-  }, []);
-
-  const removeNotification = useCallback(async (id: string) => {
-    console.log("Removing notification:", id);
-    dispatch({ type: "REMOVE_NOTIFICATION", payload: id });
-  }, []);
-
-  const updatePreferences = useCallback(
-    async (preferences: NotificationPreferences) => {
-      console.log("Updating notification preferences:", preferences);
-      dispatch({ type: "UPDATE_PREFERENCES", payload: preferences });
-    },
-    []
-  );
-
-  const requestBrowserPermission = useCallback(async (): Promise<boolean> => {
-    if (!("Notification" in window)) {
-      console.warn("Browser does not support notifications");
-      return false;
-    }
-
-    if (Notification.permission === "granted") {
-      return true;
-    }
-
-    const permission = await Notification.requestPermission();
-    dispatch({ type: "SET_PUSH_PERMISSION", payload: permission });
-
-    return permission === "granted";
-  }, []);
-
-  const showBrowserNotification = useCallback(
-    (notification: NotificationData) => {
-      if (
-        !("Notification" in window) ||
-        Notification.permission !== "granted"
-      ) {
-        return;
-      }
-
-      if (isQuietHours()) {
-        return;
-      }
-
-      console.log("Showing browser notification:", notification.title);
-
-      const browserNotification = new Notification(notification.title, {
-        body: notification.body,
-        icon: "/favicon.ico", // Use your app icon
-        tag: notification.id,
-        requireInteraction: notification.priority === "urgent",
-      });
-
-      browserNotification.onclick = () => {
-        window.focus();
-        if (notification.actionUrl) {
-          window.location.href = notification.actionUrl;
-        }
-        browserNotification.close();
-      };
-
-      // Auto-close after 5 seconds for non-urgent notifications
-      if (notification.priority !== "urgent") {
-        setTimeout(() => browserNotification.close(), 5000);
-      }
-    },
-    [state.preferences.quietHours]
-  );
-
-  const playNotificationSound = useCallback(() => {
-    try {
-      // Create a simple notification sound using Web Audio API
-      const audioContext = new (window.AudioContext ||
-        (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(
-        0.01,
-        audioContext.currentTime + 0.3
-      );
-
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.3);
-    } catch (error) {
-      console.warn("Could not play notification sound:", error);
-    }
-  }, []);
-
-  const isQuietHours = useCallback((): boolean => {
-    if (!state.preferences.quietHours.enabled) return false;
-
-    const now = new Date();
-    const currentTime = now.getHours() * 60 + now.getMinutes();
-
-    const [startHour, startMin] = state.preferences.quietHours.start
-      .split(":")
-      .map(Number);
-    const [endHour, endMin] = state.preferences.quietHours.end
-      .split(":")
-      .map(Number);
-
-    const startTime = startHour * 60 + startMin;
-    const endTime = endHour * 60 + endMin;
-
-    if (startTime <= endTime) {
-      return currentTime >= startTime && currentTime <= endTime;
-    } else {
-      return currentTime >= startTime || currentTime <= endTime;
-    }
-  }, [state.preferences.quietHours]);
-
-  const contextValue: NotificationContextType = {
-    state,
-    addNotification,
+  const value: NotificationContextType = {
+    notifications,
+    unreadCount,
+    unreadMessageCount,
+    refreshNotifications,
     markAsRead,
-    markAllAsRead,
-    removeNotification,
-    updatePreferences,
-    requestBrowserPermission,
-    showBrowserNotification,
-    playNotificationSound,
+    setActiveConversation,
+    loading,
+    isConnected,
   };
 
   return (
-    <NotificationContext.Provider value={contextValue}>
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );
@@ -361,7 +243,7 @@ export function NotificationProvider({
 
 export function useNotifications() {
   const context = useContext(NotificationContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error(
       "useNotifications must be used within a NotificationProvider"
     );

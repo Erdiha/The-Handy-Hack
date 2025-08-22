@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { useRealTimeMessages } from "@/hooks/useRealTimeMessages";
 import { io } from "socket.io-client";
-
+import { DeleteMessageModal } from "@/components/modals/MessageDeleteModal";
+import { useNotifications } from "@/contexts/NotificationContext";
 interface Message {
   id: string;
   senderId: string;
@@ -19,6 +20,19 @@ interface Message {
   tempId?: string;
   isOptimistic?: boolean;
   conversationId?: string;
+  createdAt?: string;
+}
+
+interface ApiMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  timestamp: string;
+  isRead: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  createdAt?: string;
 }
 
 interface Conversation {
@@ -51,103 +65,75 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
-  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [isMobile, setIsMobile] = useState(false);
+
+  // Delete message states
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
 
   // Refs
   const initializedRef = useRef(false);
   const urlProcessedRef = useRef(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const isUserScrollingRef = useRef(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // **SEAMLESS SCROLL SYSTEM**
-  const isAtBottomRef = useRef(true);
-  const scrollObserverRef = useRef<IntersectionObserver | null>(null);
-  const bottomElementRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = useCallback((force = false) => {
+  const scrollToBottom = useCallback(() => {
     const container = messagesContainerRef.current;
-    if (!container) return;
-
-    // Use requestAnimationFrame for ultra-smooth scrolling
-    requestAnimationFrame(() => {
-      const isNearBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight <
-        50;
-
-      if (force || isAtBottomRef.current || isNearBottom) {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: "smooth",
-        });
-      }
-    });
-  }, []);
-
-  // Track if user is at bottom using Intersection Observer
-  useEffect(() => {
-    if (!bottomElementRef.current) return;
-
-    scrollObserverRef.current = new IntersectionObserver(
-      ([entry]) => {
-        isAtBottomRef.current = entry.isIntersecting;
-      },
-      {
-        root: messagesContainerRef.current,
-        threshold: 0.1,
-        rootMargin: "0px 0px 20px 0px",
-      }
-    );
-
-    scrollObserverRef.current.observe(bottomElementRef.current);
-
-    return () => {
-      if (scrollObserverRef.current) {
-        scrollObserverRef.current.disconnect();
-      }
-    };
-  }, [selectedConversationId]);
-
-  // Track user manual scrolling
-  const handleScroll = useCallback(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    isUserScrollingRef.current = true;
-
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
     }
-
-    scrollTimeoutRef.current = setTimeout(() => {
-      isUserScrollingRef.current = false;
-    }, 100);
   }, []);
-
-  // Auto-scroll on ANY content change
+  const { refreshNotifications, setActiveConversation } = useNotifications();
+  // Auto-scroll when messages change
   useEffect(() => {
-    if (messages.length === 0) return;
-
-    const timer = setTimeout(() => {
-      if (!isUserScrollingRef.current) {
-        scrollToBottom(false);
-      }
-    }, 10); // Very fast response
-
-    return () => clearTimeout(timer);
+    scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // Force scroll when conversation changes
+  // Auto-scroll when conversation changes
   useEffect(() => {
     if (selectedConversationId) {
-      setTimeout(() => {
-        isAtBottomRef.current = true;
-        scrollToBottom(true);
-      }, 50);
+      setTimeout(scrollToBottom, 100);
     }
   }, [selectedConversationId, scrollToBottom]);
+
+  // **TIME LIMIT CHECKS**
+  const getMessageAge = (message: Message) => {
+    if (message.isOptimistic) return 0;
+
+    if (message.createdAt) {
+      return new Date().getTime() - new Date(message.createdAt).getTime();
+    } else if (message.timestamp.includes("T")) {
+      return new Date().getTime() - new Date(message.timestamp).getTime();
+    }
+
+    return 0;
+  };
+
+  const canEditMessage = (message: Message) => {
+    if (message.senderId !== session?.user?.id) return false;
+    if (message.isOptimistic) return true;
+
+    const messageAge = getMessageAge(message);
+    const oneHour = 60 * 60 * 1000;
+    return messageAge <= oneHour;
+  };
+
+  const canDeleteMessage = (message: Message) => {
+    if (message.senderId !== session?.user?.id) return false;
+    return true;
+  };
+
+  const canDeleteForEveryone = (message: Message) => {
+    if (message.senderId !== session?.user?.id) return false;
+    if (message.isOptimistic) return true;
+
+    const messageAge = getMessageAge(message);
+    const oneHour = 60 * 60 * 1000;
+    return messageAge <= oneHour;
+  };
 
   // Check mobile viewport
   useEffect(() => {
@@ -159,17 +145,13 @@ export default function MessagesPage() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Socket.io and real-time messaging
+  // Socket.io connection
   useEffect(() => {
     if (!session?.user?.id) return;
-
-    console.log("Authenticating user:", session.user.id, session.user.name);
 
     const socket = io();
 
     socket.on("connect", () => {
-      console.log("✅ Socket.io connected:", socket.id);
-
       socket.emit("authenticate", {
         userId: session.user.id,
         userName: session.user.name,
@@ -190,12 +172,23 @@ export default function MessagesPage() {
     leaveConversation,
     startTyping,
     stopTyping,
-    startPolling,
-    stopPolling,
   } = useRealTimeMessages({
     conversationId: selectedConversationId,
     onNewMessage: useCallback(
       (message: Message) => {
+        // Handle deletion messages
+        if (message.content.startsWith("__MESSAGE_DELETED_FOR_EVERYONE__")) {
+          const deletedMessageId = message.content.replace(
+            "__MESSAGE_DELETED_FOR_EVERYONE__",
+            ""
+          );
+          setMessages((prev: Message[]) =>
+            prev.filter((msg) => msg.id !== deletedMessageId)
+          );
+          return;
+        }
+
+        // Regular message handling
         const newMsg: Message = {
           id: message.id,
           conversationId: message.conversationId,
@@ -204,10 +197,11 @@ export default function MessagesPage() {
           content: message.content,
           timestamp: message.timestamp,
           isRead: message.isRead,
-          canEdit: message.senderId === session?.user?.id && !message.isRead,
-          canDelete: message.senderId === session?.user?.id && !message.isRead,
+          canEdit: message.senderId === session?.user?.id,
+          canDelete: message.senderId === session?.user?.id,
           tempId: message.tempId,
           isOptimistic: false,
+          createdAt: message.createdAt || new Date().toISOString(),
         };
 
         setMessages((prev: Message[]) => {
@@ -244,21 +238,12 @@ export default function MessagesPage() {
       user.userId !== session?.user?.id
   );
 
-  // FORCE scroll for typing indicators
+  // Auto-scroll when typing indicators appear
   useEffect(() => {
     if (currentTypingUsers.length > 0) {
-      const container = messagesContainerRef.current;
-      if (container) {
-        // Instant scroll to bottom when typing appears
-        container.scrollTop = container.scrollHeight;
-
-        // Backup scroll after short delay
-        setTimeout(() => {
-          container.scrollTop = container.scrollHeight;
-        }, 100);
-      }
+      scrollToBottom();
     }
-  }, [currentTypingUsers.length]);
+  }, [currentTypingUsers.length, scrollToBottom]);
 
   // Load conversations
   const loadConversations = async () => {
@@ -273,7 +258,6 @@ export default function MessagesPage() {
     }
   };
 
-  // Load messages
   const loadMessages = async (conversationId: string) => {
     try {
       if (selectedConversationId) {
@@ -285,10 +269,21 @@ export default function MessagesPage() {
         `/api/messages?conversationId=${conversationId}`
       );
       const data = await response.json();
+
       if (data.success) {
         setMessages(data.messages);
         setSelectedConversationId(conversationId);
         joinConversation(conversationId);
+        setActiveConversation(conversationId);
+        // Mark notifications as read for this conversation
+        await fetch("/api/notifications/mark-conversation-read", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId }),
+        });
+
+        // Refresh notification counts
+        refreshNotifications();
       }
     } catch (error) {
       console.error("Failed to load messages:", error);
@@ -319,8 +314,6 @@ export default function MessagesPage() {
       let conversationId = null;
 
       if (jobId && customerId && jobTitle) {
-        const isCompleted = params.get("completed") === "true";
-
         const response = await fetch("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -335,7 +328,6 @@ export default function MessagesPage() {
         }
       } else if (handymanId && handymanName) {
         const intent = params.get("intent");
-
         const initialMessage =
           intent === "quote"
             ? `Hi ${handymanName}, I'd like to request a quote for ${
@@ -361,10 +353,14 @@ export default function MessagesPage() {
       }
 
       if (conversationId) {
-        await loadMessages(conversationId);
+        await loadConversations();
+        setTimeout(async () => {
+          await loadMessages(conversationId);
+        }, 300);
+        return true;
       }
 
-      return true;
+      return false;
     } catch (error) {
       console.error("Failed to process URL parameters:", error);
       return false;
@@ -382,15 +378,11 @@ export default function MessagesPage() {
         window.location.search.includes("handyman");
 
       if (hasURLParams) {
-        const processed = await processURLParameters();
-        if (!processed) {
-          await loadConversations();
-        }
+        await processURLParameters();
       } else {
         await loadConversations();
       }
 
-      await loadConversations();
       setLoading(false);
     };
 
@@ -409,9 +401,6 @@ export default function MessagesPage() {
       if (selectedConversationId) {
         leaveConversation(selectedConversationId);
         stopTyping(selectedConversationId);
-      }
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
       }
     };
   }, [selectedConversationId, leaveConversation, stopTyping]);
@@ -447,9 +436,9 @@ export default function MessagesPage() {
         canEdit: true,
         canDelete: true,
         isOptimistic: true,
+        createdAt: new Date().toISOString(),
       };
 
-      // Add optimistic message
       setMessages((prev) => [...prev, optimisticMessage]);
 
       const response = await fetch("/api/messages", {
@@ -472,12 +461,22 @@ export default function MessagesPage() {
                   canEdit: true,
                   canDelete: true,
                   isOptimistic: false,
+                  createdAt: data.message.createdAt || new Date().toISOString(),
                 }
               : msg
           )
         );
 
         socketSendMessage(selectedConversationId, messageContent);
+        const socket = window.globalSocket;
+        if (socket) {
+          socket.emit("notification_update", {
+            userId: otherParticipant?.id,
+            conversationId: selectedConversationId,
+            type: "message",
+          });
+        }
+
         loadConversations();
       } else {
         setMessages((prev) => prev.filter((msg) => msg.tempId !== tempId));
@@ -517,7 +516,7 @@ export default function MessagesPage() {
     }
   };
 
-  // Edit and delete functions
+  // Edit message
   const editMessage = async (messageId: string) => {
     if (!editContent.trim()) return;
 
@@ -549,26 +548,77 @@ export default function MessagesPage() {
     }
   };
 
-  const deleteMessage = async (messageId: string) => {
-    if (!confirm("Delete this message?")) return;
-
+  // Delete message - Updated to handle hiding vs full deletion
+  const deleteMessage = async (
+    messageId: string,
+    deleteType: "me" | "everyone"
+  ) => {
     try {
+      const message = messages.find((m) => m.id === messageId);
+      if (!message) {
+        alert("Message not found");
+        setDeleteModalOpen(false);
+        setMessageToDelete(null);
+        return;
+      }
+
+      if (deleteType === "everyone" && !canDeleteForEveryone(message)) {
+        alert("You can only delete for everyone within 1 hour of sending");
+        setDeleteModalOpen(false);
+        setMessageToDelete(null);
+        return;
+      }
+
       const response = await fetch(`/api/messages?messageId=${messageId}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteType }),
       });
 
       const data = await response.json();
       if (data.success) {
+        // Always remove from current user's view
         setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+
+        // If deleted for everyone, broadcast the deletion
+        if (data.broadcastDeletion && selectedConversationId) {
+          socketSendMessage(
+            selectedConversationId,
+            `__MESSAGE_DELETED_FOR_EVERYONE__${messageId}`
+          );
+        }
+
+        // Update conversation list
         loadConversations();
+
+        console.log(
+          "✅ Message deletion:",
+          data.deletedForEveryone ? "Complete" : "Hidden for user"
+        );
+      } else {
+        alert(data.error || "Failed to delete message");
       }
     } catch (error) {
       console.error("Failed to delete message:", error);
+      alert("Failed to delete message");
     }
+
+    setDeleteModalOpen(false);
+    setMessageToDelete(null);
   };
 
+  // Delete conversation - Updated to handle age-based deletion
   const deleteConversation = async (conversationId: string) => {
-    if (!confirm("Delete entire conversation? This cannot be undone.")) return;
+    const conversation = conversations.find((c) => c.id === conversationId);
+    if (!conversation) return;
+
+    // Check age for confirmation message
+    const now = new Date();
+    const ageInHours = 0;
+    const confirmMessage =
+      "Delete conversation? (System will determine if it's hidden or fully deleted based on age)";
+
+    if (!confirm(confirmMessage)) return;
 
     try {
       const response = await fetch(
@@ -580,17 +630,33 @@ export default function MessagesPage() {
 
       const data = await response.json();
       if (data.success) {
+        // Always remove from current user's conversation list
         setConversations((prev) =>
           prev.filter((conv) => conv.id !== conversationId)
         );
+
+        // If this was the selected conversation, clear it
         if (selectedConversationId === conversationId) {
           setSelectedConversationId(null);
           setMessages([]);
         }
+
+        console.log(
+          "✅ Conversation:",
+          data.deletedForEveryone ? "Deleted completely" : "Hidden for user"
+        );
+      } else {
+        alert(data.error || "Failed to delete conversation");
       }
     } catch (error) {
       console.error("Failed to delete conversation:", error);
+      alert("Failed to delete conversation");
     }
+  };
+
+  const openDeleteModal = (messageId: string) => {
+    setMessageToDelete(messageId);
+    setDeleteModalOpen(true);
   };
 
   // Derived state
@@ -673,84 +739,91 @@ export default function MessagesPage() {
                   </p>
                 </motion.div>
               ) : (
-                <div className="space-y-1 p-2 lg:p-4">
-                  {conversations.map((conversation, index) => {
-                    const otherPerson = conversation.participants.find(
-                      (p) => p.id !== session?.user?.id
-                    );
-                    const isOnline = onlineUsers.includes(
-                      otherPerson?.id || ""
-                    );
+                <div className="space-y-1 p-2 lg:p-4 min-h-[200px]">
+                  <AnimatePresence mode="popLayout">
+                    {conversations.map((conversation, index) => {
+                      const otherPerson = conversation.participants.find(
+                        (p) => p.id !== session?.user?.id
+                      );
+                      const isOnline = onlineUsers.includes(
+                        otherPerson?.id || ""
+                      );
 
-                    return (
-                      <motion.div
-                        key={conversation.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.01, duration: 0.4 }}
-                        whileHover={{
-                          y: -2,
-                          boxShadow: "0 8px 25px rgba(0,0,0,0.1)",
-                        }}
-                        whileTap={{ y: 0 }}
-                        onClick={() => loadMessages(conversation.id)}
-                        className={`p-3 lg:p-4 rounded-xl lg:rounded-2xl cursor-pointer transition-all duration-300 relative group ${
-                          selectedConversationId === conversation.id
-                            ? "bg-gradient-to-r from-orange-100 to-orange-50 border-orange-300 border-2 shadow-lg"
-                            : "hover:bg-gradient-to-r hover:from-slate-50 hover:to-white border-2 border-transparent hover:shadow-md"
-                        }`}
-                      >
-                        <div className="flex items-start space-x-3">
-                          <div className="relative">
-                            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
-                              <span className="text-white font-bold text-sm lg:text-base">
-                                {otherPerson?.name
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")}
-                              </span>
-                            </div>
-                            {isOnline && (
-                              <div className="absolute -bottom-1 -right-1 w-3 h-3 lg:w-4 lg:h-4 bg-green-500 border-2 border-white rounded-full" />
-                            )}
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between mb-1">
-                              <h3 className="font-semibold text-slate-800 truncate text-sm lg:text-base">
-                                {otherPerson?.name}
-                              </h3>
-                              <span className="text-xs text-slate-500">
-                                {conversation.lastMessage?.timestamp}
-                              </span>
-                            </div>
-
-                            {conversation.jobContext && (
-                              <div className="text-xs text-blue-600 mb-1 font-medium">
-                                💼 {conversation.jobContext.jobTitle}
-                              </div>
-                            )}
-
-                            <p className="text-xs lg:text-sm text-slate-600 truncate">
-                              {conversation.lastMessage?.content ||
-                                "No messages yet"}
-                            </p>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteConversation(conversation.id);
+                      return (
+                        <motion.div
+                          key={conversation.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: -100 }}
+                          transition={{
+                            delay: Math.min(index * 0.05, 0.3),
+                            duration: 0.3,
+                            ease: "easeOut",
                           }}
-                          className="absolute top-[-8px] -right-2 p-1 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200"
-                          title="Delete conversation"
+                          whileHover={{
+                            y: -2,
+                            boxShadow: "0 8px 25px rgba(0,0,0,0.1)",
+                          }}
+                          whileTap={{ y: 0 }}
+                          onClick={() => loadMessages(conversation.id)}
+                          className={`p-3 lg:p-4 rounded-xl lg:rounded-2xl cursor-pointer transition-all duration-300 relative group ${
+                            selectedConversationId === conversation.id
+                              ? "bg-gradient-to-r from-orange-100 to-orange-50 border-orange-300 border-2 shadow-lg"
+                              : "hover:bg-gradient-to-r hover:from-slate-50 hover:to-white border-2 border-transparent hover:shadow-md"
+                          }`}
                         >
-                          ×
-                        </button>
-                      </motion.div>
-                    );
-                  })}
+                          <div className="flex items-start space-x-3">
+                            <div className="relative">
+                              <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+                                <span className="text-white font-bold text-sm lg:text-base">
+                                  {otherPerson?.name
+                                    .split(" ")
+                                    .map((n) => n[0])
+                                    .join("")}
+                                </span>
+                              </div>
+                              {isOnline && (
+                                <div className="absolute -bottom-1 -right-1 w-3 h-3 lg:w-4 lg:h-4 bg-green-500 border-2 border-white rounded-full" />
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <h3 className="font-semibold text-slate-800 truncate text-sm lg:text-base">
+                                  {otherPerson?.name}
+                                </h3>
+                                <span className="text-xs text-slate-500">
+                                  {conversation.lastMessage?.timestamp}
+                                </span>
+                              </div>
+
+                              {conversation.jobContext && (
+                                <div className="text-xs text-blue-600 mb-1 font-medium">
+                                  💼 {conversation.jobContext.jobTitle}
+                                </div>
+                              )}
+
+                              <p className="text-xs lg:text-sm text-slate-600 truncate">
+                                {conversation.lastMessage?.content ||
+                                  "No messages yet"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteConversation(conversation.id);
+                            }}
+                            className="absolute top-[-8px] -right-2 p-1 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200"
+                            title="Delete conversation"
+                          >
+                            ×
+                          </button>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
                 </div>
               )}
             </div>
@@ -768,21 +841,33 @@ export default function MessagesPage() {
             {selectedConversationId ? (
               <>
                 {/* Chat Header */}
-                <div className="border-b border-slate-200 p-4 lg:p-6 bg-gradient-to-r from-white to-orange-50">
+                <div className="bg-white border-b border-slate-100 px-4 lg:px-6 py-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3 lg:space-x-4">
+                    <div className="flex items-center space-x-4">
                       {isMobile && (
                         <button
                           onClick={() => setSelectedConversationId(null)}
-                          className="p-2 hover:bg-orange-100 rounded-lg transition-colors"
+                          className="p-1 text-slate-600 hover:text-slate-800"
                         >
-                          ←
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 19l-7-7 7-7"
+                            />
+                          </svg>
                         </button>
                       )}
 
                       <div className="relative">
-                        <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center shadow-md">
-                          <span className="text-white font-bold text-sm lg:text-base">
+                        <div className="w-11 h-11 bg-slate-600 rounded-full flex items-center justify-center">
+                          <span className="text-white font-medium text-sm">
                             {otherParticipant?.name
                               .split(" ")
                               .map((n) => n[0])
@@ -790,68 +875,86 @@ export default function MessagesPage() {
                           </span>
                         </div>
                         {onlineUsers.includes(otherParticipant?.id || "") && (
-                          <div className="absolute -bottom-1 -right-1 w-3 h-3 lg:w-4 lg:h-4 bg-green-500 border-2 border-white rounded-full" />
+                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
                         )}
                       </div>
 
                       <div>
-                        <h2 className="text-lg lg:text-xl font-bold text-slate-800">
+                        <h2 className="text-lg font-semibold text-slate-900">
                           {otherParticipant?.name}
                         </h2>
-                        <div className="flex items-center space-x-2">
-                          <p className="text-slate-500 capitalize text-sm">
+                        <div className="flex items-center space-x-2 text-sm text-slate-500">
+                          <span className="capitalize">
                             {otherParticipant?.role}
-                          </p>
+                          </span>
                           {onlineUsers.includes(otherParticipant?.id || "") && (
-                            <span className="text-green-600 text-xs font-medium">
-                              • Online
-                            </span>
+                            <>
+                              <span>•</span>
+                              <span className="text-green-600">Online</span>
+                            </>
+                          )}
+                          {currentTypingUsers.length > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-orange-600">typing...</span>
+                            </>
                           )}
                         </div>
-
-                        {selectedConversation?.jobContext && (
-                          <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-                            <span className="font-semibold text-blue-800">
-                              💼 Job:
-                            </span>
-                            <span className="text-blue-700 ml-1">
-                              {selectedConversation.jobContext.jobTitle}
-                            </span>
-                          </div>
-                        )}
                       </div>
                     </div>
 
                     <button
                       onClick={() => deleteConversation(selectedConversationId)}
-                      className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
-                      title="Delete conversation"
+                      className="p-2 text-slate-400 hover:text-slate-600 rounded-lg"
                     >
-                      🗑️
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
                     </button>
                   </div>
+
+                  {selectedConversation?.jobContext && (
+                    <div className="mt-3 px-3 py-2 bg-blue-50 rounded-lg border-l-3 border-blue-500">
+                      <p className="text-sm text-blue-700 font-medium">
+                        {selectedConversation.jobContext.jobTitle}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Messages Area with PROPER SCROLL */}
+                {/* Messages Area */}
                 <div
                   ref={messagesContainerRef}
-                  onScroll={handleScroll}
                   className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-3 lg:space-y-4 bg-gradient-to-b from-orange-25 to-white"
-                  style={{
-                    scrollBehavior: "smooth",
-                    overflowAnchor: "none",
-                  }}
                 >
-                  {messages.map((message, index) => {
+                  {messages.map((message) => {
                     const isOwn = message.senderId === session?.user?.id;
                     const isEditing = editingId === message.id;
+                    const showActions =
+                      isOwn &&
+                      (canEditMessage(message) || canDeleteMessage(message));
 
                     return (
                       <motion.div
                         key={message.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2 }}
+                        initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{
+                          duration: 0.4,
+                          ease: [0.22, 1, 0.36, 1], // Smooth ease-out curve
+                          opacity: { duration: 0.3 },
+                          scale: { duration: 0.35 },
+                        }}
                         className={`flex ${
                           isOwn ? "justify-end" : "justify-start"
                         }`}
@@ -912,36 +1015,35 @@ export default function MessagesPage() {
                                 )}
                               </div>
 
-                              {isOwn &&
-                                (message.canEdit || message.canDelete) && (
-                                  <div className="absolute -top-8 -right-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                                    <div className="flex gap-1 bg-white rounded-lg shadow-lg border p-1">
-                                      {message.canEdit && (
-                                        <button
-                                          onClick={() => {
-                                            setEditingId(message.id);
-                                            setEditContent(message.content);
-                                          }}
-                                          className="p-1 text-slate-600 hover:text-blue-600 rounded text-xs transition-colors"
-                                          title="Edit"
-                                        >
-                                          ✏️
-                                        </button>
-                                      )}
-                                      {message.canDelete && (
-                                        <button
-                                          onClick={() =>
-                                            deleteMessage(message.id)
-                                          }
-                                          className="p-1 text-slate-600 hover:text-red-600 rounded text-xs transition-colors"
-                                          title="Delete"
-                                        >
-                                          🗑️
-                                        </button>
-                                      )}
-                                    </div>
+                              {showActions && (
+                                <div className="absolute -top-8 -right-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                  <div className="flex gap-1 bg-white rounded-lg shadow-lg border p-1">
+                                    {canEditMessage(message) && (
+                                      <button
+                                        onClick={() => {
+                                          setEditingId(message.id);
+                                          setEditContent(message.content);
+                                        }}
+                                        className="p-1 text-slate-600 hover:text-blue-600 rounded text-xs transition-colors"
+                                        title="Edit"
+                                      >
+                                        ✏️
+                                      </button>
+                                    )}
+                                    {canDeleteMessage(message) && (
+                                      <button
+                                        onClick={() =>
+                                          openDeleteModal(message.id)
+                                        }
+                                        className="p-1 text-slate-600 hover:text-red-600 rounded text-xs transition-colors"
+                                        title="Delete"
+                                      >
+                                        🗑️
+                                      </button>
+                                    )}
                                   </div>
-                                )}
+                                </div>
+                              )}
                             </>
                           )}
                         </div>
@@ -950,42 +1052,44 @@ export default function MessagesPage() {
                   })}
 
                   {/* Typing Indicators */}
-                  {currentTypingUsers.length > 0 && (
-                    <motion.div
-                      className="flex justify-start"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                    >
-                      <div className="bg-gradient-to-br from-slate-100 to-slate-50 text-slate-600 px-4 py-3 rounded-2xl shadow-md">
-                        <div className="flex items-center space-x-2">
-                          <div className="flex space-x-1">
-                            {[0, 1, 2].map((i) => (
-                              <motion.div
-                                key={i}
-                                className="w-2 h-2 bg-slate-400 rounded-full"
-                                animate={{
-                                  y: [0, -8, 0],
-                                  opacity: [0.4, 1, 0.4],
-                                }}
-                                transition={{
-                                  duration: 1.5,
-                                  repeat: Infinity,
-                                  delay: i * 0.2,
-                                }}
-                              />
-                            ))}
+                  <AnimatePresence>
+                    {currentTypingUsers.length > 0 && (
+                      <motion.div
+                        className="flex justify-start"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                        <div className="bg-gradient-to-br from-slate-100 to-slate-50 text-slate-600 px-4 py-3 rounded-2xl shadow-md">
+                          <div className="flex items-center space-x-2">
+                            <div className="flex space-x-1">
+                              {[0, 1, 2].map((i) => (
+                                <motion.div
+                                  key={i}
+                                  className="w-2 h-2 bg-slate-400 rounded-full"
+                                  animate={{
+                                    y: [0, -8, 0],
+                                    opacity: [0.4, 1, 0.4],
+                                  }}
+                                  transition={{
+                                    duration: 1.5,
+                                    repeat: Infinity,
+                                    delay: i * 0.2,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-xs font-medium">
+                              {currentTypingUsers
+                                .map((user) => user.userName)
+                                .join(", ")}{" "}
+                              typing...
+                            </span>
                           </div>
-                          <span className="text-xs font-medium">
-                            {currentTypingUsers
-                              .map((user) => user.userName)
-                              .join(", ")}{" "}
-                            typing...
-                          </span>
                         </div>
-                      </div>
-                    </motion.div>
-                  )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* Message Input */}
@@ -1036,6 +1140,13 @@ export default function MessagesPage() {
           </motion.div>
         </div>
       </div>
+
+      {/* Delete Message Modal */}
+      <DeleteMessageModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onDelete={(deleteType) => deleteMessage(messageToDelete!, deleteType)}
+      />
     </div>
   );
 }

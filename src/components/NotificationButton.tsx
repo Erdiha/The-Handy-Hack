@@ -1,240 +1,166 @@
-// components/NotificationButton.tsx - Modal Version
-
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { NotificationBadge } from "./NotificationBadge";
-import { NotificationData } from "@/types/notificantions";
+import type { Notification } from "@/contexts/NotificationContext";
+import Link from "next/link";
+
+interface NotificationItemProps {
+  notification: Notification;
+  onRead: (id: string) => Promise<void>;
+  onClose: () => void;
+}
 
 export function NotificationButton() {
-  const { state, markAsRead, markAllAsRead, removeNotification } =
-    useNotifications();
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const {
+    notifications,
+    unreadCount,
 
-  // Detect mobile vs desktop
+    loading,
+    markAsRead,
+  } = useNotifications();
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  // Handle hover open/close with delays
+  const handleMouseEnter = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsOpen(true);
+    }, 150);
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsOpen(false);
+    }, 200);
+  };
+
+  // Close dropdown when clicking outside
   useEffect(() => {
-    const checkDevice = () => {
-      setIsMobile(window.innerWidth < 768);
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleEscapeKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleEscapeKey);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscapeKey);
     };
+  }, [isOpen]);
 
-    checkDevice();
-    window.addEventListener("resize", checkDevice);
-    return () => window.removeEventListener("resize", checkDevice);
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
   }, []);
-
-  const formatTime = (date: Date) => {
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-
-    if (minutes < 1) return "Just now";
-    if (minutes < 60) return `${minutes}m ago`;
-    if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
-    return `${Math.floor(minutes / 1440)}d ago`;
-  };
-
-  const handleNotificationClick = (notification: NotificationData) => {
-    if (!notification.readAt) {
-      markAsRead(notification.id);
-    }
-
-    if (notification.actionUrl) {
-      window.location.href = notification.actionUrl;
-    }
-
-    // Close modal/dropdown
-    setIsModalOpen(false);
-    setIsDropdownOpen(false);
-  };
-
-  // Clear timeout
-  const clearCloseTimeout = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  }, []);
-
-  // Set timeout to close dropdown
-  const startCloseTimeout = useCallback(() => {
-    clearCloseTimeout();
-    timeoutRef.current = setTimeout(() => {
-      setIsDropdownOpen(false);
-    }, 1200);
-  }, [clearCloseTimeout]);
-
-  // Handle button click
-  const handleButtonClick = () => {
-    if (isMobile) {
-      setIsModalOpen(true);
-    } else {
-      setIsDropdownOpen(!isDropdownOpen);
-    }
-  };
-
-  // Desktop hover handlers
-  const handleMouseEnter = useCallback(() => {
-    if (!isMobile) {
-      clearCloseTimeout();
-      setIsDropdownOpen(true);
-    }
-  }, [isMobile, clearCloseTimeout]);
-
-  const handleMouseLeave = useCallback(() => {
-    if (!isMobile) {
-      startCloseTimeout();
-    }
-  }, [isMobile, startCloseTimeout]);
-
-  // Notification list component (reused in dropdown and modal)
-  const NotificationList = ({ onClose }: { onClose: () => void }) => (
-    <div className="max-h-96 overflow-y-auto">
-      {state.notifications.length === 0 ? (
-        <div className="p-8 text-center text-slate-500">
-          <div className="text-4xl mb-2">🔔</div>
-          <p>No notifications yet</p>
-        </div>
-      ) : (
-        state.notifications.map((notification) => (
-          <div
-            key={notification.id}
-            onClick={() => handleNotificationClick(notification)}
-            className={`p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors duration-200 ${
-              !notification.readAt
-                ? "bg-blue-50 border-l-4 border-l-blue-500"
-                : ""
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <h4 className="font-medium text-slate-800 text-sm">
-                  {notification.title}
-                </h4>
-                <p className="text-slate-600 text-sm mt-1">
-                  {notification.body}
-                </p>
-                <p className="text-xs text-slate-500 mt-2">
-                  {formatTime(notification.createdAt)}
-                </p>
-              </div>
-
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeNotification(notification.id);
-                }}
-                className="text-slate-400 hover:text-slate-600 p-1 transition-colors duration-200"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  );
 
   return (
-    <>
-      <div
-        className="relative cursor-pointer"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+    <div
+      ref={containerRef}
+      className="relative"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <motion.button
+        ref={buttonRef}
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative p-2 text-slate-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        aria-label="Notifications"
+        aria-expanded={isOpen}
+        aria-haspopup="true"
       >
-        <button
-          onClick={handleButtonClick}
-          className="relative p-2 text-slate-600 hover:text-slate-800 transition-colors duration-200"
-          aria-label="Notifications"
+        {/* Bell Icon */}
+        <svg
+          className="w-6 h-6"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
         >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+          />
+        </svg>
+
+        {/* Notification Badge */}
+        <AnimatePresence>
+          {unreadCount > 0 && !loading && (
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0 }}
+              className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center shadow-sm"
+            >
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.button>
+
+      {/* Dropdown */}
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Mobile Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/20 z-40 md:hidden"
+              onClick={() => setIsOpen(false)}
             />
-          </svg>
 
-          <div className="absolute -top-1 -right-1">
-            <NotificationBadge />
-          </div>
-        </button>
-
-        {/* Desktop Dropdown */}
-        {!isMobile && (
-          <div
-            className={`absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden transition-all duration-200 transform origin-top-right ${
-              isDropdownOpen
-                ? "opacity-100 scale-100 visible"
-                : "opacity-0 scale-95 invisible"
-            }`}
-            style={{ zIndex: 50 }}
-          >
-            <div className="p-4 border-b border-slate-200">
-              <div className="flex items-center justify-between">
+            {/* Dropdown Content */}
+            <motion.div
+              ref={dropdownRef}
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="absolute z-50 bg-white rounded-xl shadow-lg border border-slate-200 right-0 mt-2 w-80 max-md:fixed max-md:top-16 max-md:left-4 max-md:right-4 max-md:w-auto max-md:mx-auto max-md:max-w-sm"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-slate-200">
                 <h3 className="font-semibold text-slate-800">Notifications</h3>
-                {state.unreadCount > 0 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      markAllAsRead();
-                    }}
-                    onMouseEnter={clearCloseTimeout}
-                    className="text-sm text-blue-600 hover:text-blue-700 transition-colors duration-200"
-                  >
-                    Mark all read
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <NotificationList onClose={() => setIsDropdownOpen(false)} />
-          </div>
-        )}
-      </div>
-
-      {/* Mobile Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <h2 className="text-xl font-bold text-slate-800">
-                Notifications
-              </h2>
-              <div className="flex items-center space-x-3">
-                {state.unreadCount > 0 && (
-                  <button
-                    onClick={markAllAsRead}
-                    className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200"
-                  >
-                    Mark all read
-                  </button>
-                )}
                 <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors duration-200"
+                  onClick={() => setIsOpen(false)}
+                  className="md:hidden p-1 text-slate-400 hover:text-slate-600 rounded"
+                  aria-label="Close notifications"
                 >
                   <svg
                     className="w-5 h-5"
@@ -251,13 +177,159 @@ export function NotificationButton() {
                   </svg>
                 </button>
               </div>
-            </div>
 
-            {/* Modal Content */}
-            <NotificationList onClose={() => setIsModalOpen(false)} />
+              {/* Content */}
+              <div className="p-4">
+                {notifications.length > 0 ? (
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                    {/* Show actual notifications */}
+                    {notifications.slice(0, 5).map((notification) => (
+                      <NotificationItem
+                        key={notification.id}
+                        notification={notification}
+                        onRead={markAsRead}
+                        onClose={() => setIsOpen(false)}
+                      />
+                    ))}
+
+                    {notifications.length > 5 && (
+                      <div className="text-center text-sm text-slate-500 py-2">
+                        +{notifications.length - 5} more notifications
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="pt-3 space-y-2">
+                      {unreadCount > 0 && (
+                        <Link
+                          href="/messages"
+                          onClick={() => setIsOpen(false)}
+                          className="block w-full bg-orange-500 hover:bg-orange-600 text-white text-center py-2 px-4 rounded-lg font-medium transition-colors"
+                        >
+                          View Messages ({unreadCount})
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  /* Empty State */
+                  <div className="text-center py-6 text-slate-500">
+                    <div className="text-3xl mb-2">🔔</div>
+                    <div className="font-medium text-slate-800 mb-1">
+                      All caught up!
+                    </div>
+                    <div className="text-sm">No new notifications</div>
+                  </div>
+                )}
+
+                {/* Footer Actions */}
+                <div className="mt-4 pt-3 border-t border-slate-200">
+                  <Link
+                    href="/messages"
+                    onClick={() => setIsOpen(false)}
+                    className="block w-full text-center text-sm text-slate-500 hover:text-slate-700 py-2"
+                  >
+                    View All Messages
+                  </Link>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function NotificationItem({
+  notification,
+  onRead,
+  onClose,
+}: NotificationItemProps) {
+  const handleClick = async () => {
+    if (!notification.isRead) {
+      await onRead(notification.id);
+    }
+
+    if (notification.actionUrl) {
+      window.location.href = notification.actionUrl;
+    }
+
+    onClose();
+  };
+
+  const getNotificationIcon = (type: Notification["type"]) => {
+    switch (type) {
+      case "message":
+        return "💬";
+      case "job_response":
+        return "💼";
+      case "booking":
+        return "📅";
+      case "system":
+        return "🔔";
+      default:
+        return "📢";
+    }
+  };
+
+  const getNotificationColor = (
+    priority: Notification["priority"],
+    isRead: boolean
+  ) => {
+    if (isRead) {
+      return "bg-slate-50 border-slate-200";
+    }
+
+    switch (priority) {
+      case "urgent":
+        return "bg-red-50 border-red-200";
+      case "high":
+        return "bg-orange-50 border-orange-200";
+      case "normal":
+      case "low":
+      default:
+        return "bg-blue-50 border-blue-200";
+    }
+  };
+
+  return (
+    <div
+      onClick={handleClick}
+      className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 hover:shadow-md ${getNotificationColor(
+        notification.priority,
+        notification.isRead
+      )} ${notification.isRead ? "hover:bg-slate-100" : "hover:bg-opacity-80"}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="text-lg flex-shrink-0 mt-0.5">
+          {getNotificationIcon(notification.type)}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div
+            className={`font-medium text-sm mb-1 ${
+              notification.isRead ? "text-slate-700" : "text-slate-900"
+            }`}
+          >
+            {notification.title}
+          </div>
+          <div
+            className={`text-xs ${
+              notification.isRead ? "text-slate-500" : "text-slate-600"
+            }`}
+          >
+            {notification.body}
+          </div>
+          <div className="text-xs text-slate-400 mt-1">
+            {notification.timeAgo}
           </div>
         </div>
-      )}
-    </>
+
+        {!notification.isRead && (
+          <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-2"></div>
+        )}
+      </div>
+    </div>
   );
 }
