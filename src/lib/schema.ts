@@ -9,6 +9,7 @@ import {
   jsonb,
   decimal,
   unique,
+  json,
 } from "drizzle-orm/pg-core";
 
 // ADD THESE TWO TABLES to your existing schema.ts file
@@ -30,6 +31,19 @@ export const handymanProfiles = pgTable("handyman_profiles", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const customerProfiles = pgTable("customer_profiles", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  neighborhood: text("neighborhood"),
+  bio: text("bio"),
+  isAvailable: boolean("is_available").default(true),
+  preferences: json("preferences"), // For future customer preferences
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const notifications = pgTable(
   "notifications",
   {
@@ -41,7 +55,8 @@ export const notifications = pgTable(
     title: varchar("title", { length: 255 }).notNull(),
     body: text("body").notNull(),
     conversationId: integer("conversation_id").references(
-      () => conversations.id
+      () => conversations.id,
+      { onDelete: "cascade" }
     ),
     jobId: integer("job_id").references(() => jobs.id),
     actionUrl: varchar("action_url", { length: 500 }),
@@ -156,6 +171,7 @@ export const notificationPreferences = pgTable("notification_preferences", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
@@ -163,6 +179,7 @@ export const users = pgTable("users", {
   phone: text("phone"),
   password: text("password").notNull(),
   role: text("role").notNull().default("customer"),
+  isAvailable: boolean("is_available").default(true), // ADD THIS
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -210,7 +227,7 @@ export const jobs = pgTable("jobs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// ADD THESE - New messaging tables
+// conversation api
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
   jobId: integer("job_id").references(() => jobs.id), // Optional - for job-related conversations
@@ -223,4 +240,5 @@ export const conversations = pgTable("conversations", {
   lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   hiddenForUsers: integer("hidden_for_users").array().default([]),
+  serviceContext: text("service_context"),
 });

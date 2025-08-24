@@ -1,5 +1,5 @@
 "use client";
-
+//app/dashboard/page
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { useEffect, useState, useRef } from "react";
@@ -23,6 +23,7 @@ interface SessionUser {
   name: string;
   role: "customer" | "handyman";
 }
+
 export interface CustomerJob {
   id: string;
   title: string;
@@ -43,6 +44,7 @@ export interface CustomerJob {
   };
   responses?: number;
 }
+
 interface TrustedHandyman {
   id: string;
   name: string;
@@ -341,49 +343,24 @@ function HandymanDashboard({
       setJobActionLoading(false);
     }
   };
-
   const fetchAvailabilityStatus = async () => {
     try {
-      console.log("🔍 Fetching availability status for user:", user.id);
-
-      // Fix: Add handyman ID to the request
-      const response = await fetch("/api/handyman/availability");
-
+      console.log("🔍 [CUSTOMER] Fetching availability status...");
+      const response = await fetch("/api/customer/availability");
       const data = await response.json();
 
-      console.log("📡 Availability API response:", data);
+      console.log("📡 [CUSTOMER] API Response:", data);
 
       if (data.success && typeof data.isAvailable === "boolean") {
-        console.log("✅ Setting isAvailable to:", data.isAvailable);
+        console.log("✅ [CUSTOMER] Setting isAvailable to:", data.isAvailable);
         setIsAvailable(data.isAvailable);
-        setUseScheduledAvailability(data.useScheduledAvailability ?? false);
       } else {
-        console.warn("⚠️ Unexpected availability API response:", data);
-        // Fallback: check profile endpoint
-        const profileResponse = await fetch("/api/profile");
-        const profileData = await profileResponse.json();
-
-        if (
-          profileData.success &&
-          typeof profileData.isAvailable === "boolean"
-        ) {
-          console.log(
-            "✅ Setting isAvailable from profile to:",
-            profileData.isAvailable
-          );
-          setIsAvailable(profileData.isAvailable);
-          setUseScheduledAvailability(
-            profileData.useScheduledAvailability ?? false
-          );
-        } else {
-          console.warn("⚠️ No availability data found, defaulting to false");
-          setIsAvailable(false);
-          setUseScheduledAvailability(false);
-        }
+        console.warn("⚠️ [CUSTOMER] API failed, defaulting to true");
+        setIsAvailable(true);
       }
     } catch (error) {
-      console.error("❌ Failed to fetch availability:", error);
-      setIsAvailable(false);
+      console.error("❌ [CUSTOMER] Failed to fetch availability:", error);
+      setIsAvailable(true);
     }
   };
 
@@ -491,64 +468,29 @@ function HandymanDashboard({
 
     const newAvailabilityState = !isAvailable;
     console.log(
-      "🔄 Toggling availability from",
+      "🔄 [CUSTOMER] Toggling from",
       isAvailable,
       "to",
       newAvailabilityState
     );
-
     setAvailabilityLoading(true);
 
     try {
-      const response = await fetch("/api/handyman/toggle-availability", {
+      const response = await fetch("/api/customer/toggle-availability", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isAvailable: newAvailabilityState }),
       });
 
       const data = await response.json();
-      console.log("📡 Toggle API response:", data);
+      console.log("📡 [CUSTOMER] Toggle response:", data);
 
       if (data.success) {
-        const returnedAvailability = data.isAvailable;
-        console.log("✅ API returned isAvailable:", returnedAvailability);
-
-        setIsAvailable(returnedAvailability);
-
-        setToast({
-          isVisible: true,
-          message:
-            data.message ||
-            `Status updated to ${
-              returnedAvailability ? "Available" : "Offline"
-            }`,
-          type: "success",
-        });
-
-        // Fix: Clear existing timeout and add cleanup
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-        }
-
-        timeoutRef.current = setTimeout(() => {
-          fetchAvailabilityStatus();
-          timeoutRef.current = null;
-        }, 500);
-      } else {
-        console.error("❌ Toggle failed:", data.error);
-        setToast({
-          isVisible: true,
-          message: data.error || "Failed to update availability",
-          type: "error",
-        });
+        console.log("✅ [CUSTOMER] Successfully updated to:", data.isAvailable);
+        setIsAvailable(data.isAvailable);
       }
     } catch (error) {
-      console.error("❌ Toggle request failed:", error);
-      setToast({
-        isVisible: true,
-        message: "Failed to update availability",
-        type: "error",
-      });
+      console.error("❌ [CUSTOMER] Failed to toggle:", error);
     } finally {
       setAvailabilityLoading(false);
     }
@@ -1020,7 +962,7 @@ function CustomerDashboard({
   user: SessionUser;
   firstName: string;
 }) {
-  // Add these new states
+  // State declarations
   const [stats, setStats] = useState({
     totalJobs: 0,
     thisMonthSpending: 0,
@@ -1041,13 +983,49 @@ function CustomerDashboard({
     neighborhood: "Your area",
   });
   const [neighborhoodLoading, setNeighborhoodLoading] = useState(true);
+  const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
 
-  useEffect(() => {
-    fetchStats();
-    fetchCustomerJobs();
-    fetchTrustedHandymen();
-    fetchNeighborhoodStats(); // Add this
-  }, []);
+  // All functions
+  const fetchAvailabilityStatus = async () => {
+    try {
+      const response = await fetch("/api/customer/availability");
+      const data = await response.json();
+
+      if (data.success && typeof data.isAvailable === "boolean") {
+        setIsAvailable(data.isAvailable);
+      } else {
+        setIsAvailable(true);
+      }
+    } catch (error) {
+      console.error("Failed to fetch availability:", error);
+      setIsAvailable(true);
+    }
+  };
+
+  const handleAvailabilityToggle = async () => {
+    if (isAvailable === null) return;
+
+    const newAvailabilityState = !isAvailable;
+    setAvailabilityLoading(true);
+
+    try {
+      const response = await fetch("/api/customer/toggle-availability", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isAvailable: newAvailabilityState }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setIsAvailable(data.isAvailable);
+      }
+    } catch (error) {
+      console.error("Failed to toggle availability:", error);
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  };
 
   const fetchNeighborhoodStats = async () => {
     try {
@@ -1090,6 +1068,7 @@ function CustomerDashboard({
       setJobsLoading(false);
     }
   };
+
   const fetchStats = async () => {
     try {
       const response = await fetch("/api/customer/stats");
@@ -1103,6 +1082,18 @@ function CustomerDashboard({
       setStatsLoading(false);
     }
   };
+
+  // useEffect hooks
+  useEffect(() => {
+    fetchStats();
+    fetchCustomerJobs();
+    fetchTrustedHandymen();
+    fetchNeighborhoodStats();
+  }, []);
+
+  useEffect(() => {
+    fetchAvailabilityStatus();
+  }, []);
 
   const hasActiveJobs = customerJobs.some(
     (job) => job.status === "accepted" || job.status === "open"
@@ -1132,12 +1123,49 @@ function CustomerDashboard({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
       >
-        <h1 className="text-3xl font-bold text-slate-900 mb-2 capitalize">
-          Hi {firstName}, what needs fixing?
-        </h1>
-        <p className="text-slate-600 text-lg">
-          Find trusted help in {profile.neighborhood}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2 capitalize">
+              Hi {firstName}, what needs fixing?
+            </h1>
+            <p className="text-slate-600 text-lg">
+              Find trusted help in {profile.neighborhood}
+            </p>
+          </div>
+
+          {/* Customer availability toggle */}
+          <div className="flex items-center space-x-3">
+            {isAvailable === null ? (
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-gray-300 rounded-full animate-pulse"></div>
+                <span className="text-slate-500 font-medium">Loading...</span>
+              </div>
+            ) : (
+              <>
+                <div
+                  className={`w-3 h-3 rounded-full ${
+                    isAvailable ? "bg-green-500" : "bg-gray-400"
+                  }`}
+                ></div>
+                <span className="text-slate-600 font-medium">
+                  {isAvailable ? "Available" : "Offline"}
+                </span>
+                <Button
+                  onClick={handleAvailabilityToggle}
+                  disabled={availabilityLoading}
+                  variant="outline"
+                  className="ml-4 border-slate-300 text-slate-700 hover:bg-slate-100"
+                >
+                  {availabilityLoading
+                    ? "Updating..."
+                    : isAvailable
+                    ? "Go Offline"
+                    : "Go Online"}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
       </motion.div>
 
       <div className="grid lg:grid-cols-12 gap-8">

@@ -1,22 +1,21 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/Button';
-import { HandymanProfile }  from '@/types/handyman';
-import Link from 'next/link';
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/Button";
+import { HandymanProfile } from "@/types/handyman";
+import Link from "next/link";
 
 export default function HandymanProfilePage() {
   const params = useParams();
   const router = useRouter();
   const [profile, setProfile] = useState<HandymanProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-const [showPhone, setShowPhone] = useState(false);
-  const [copied, setCopied] = useState(false);     
+  const [error, setError] = useState("");
+  const [showPhone, setShowPhone] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  
   const copyPhone = () => {
     if (profile?.phone) {
       navigator.clipboard.writeText(profile.phone);
@@ -35,14 +34,14 @@ const [showPhone, setShowPhone] = useState(false);
     try {
       const response = await fetch(`/api/handyman/${params.id}`);
       const data = await response.json();
-      
+
       if (data.success) {
         setProfile(data.handyman);
       } else {
-        setError(data.error || 'Handyman not found');
+        setError(data.error || "Handyman not found");
       }
     } catch (error) {
-      setError('Failed to load profile');
+      setError("Failed to load profile");
     } finally {
       setLoading(false);
     }
@@ -64,9 +63,14 @@ const [showPhone, setShowPhone] = useState(false);
       <div className="min-h-[calc(100vh-5rem)] bg-orange-50 flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-4">😕</div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Profile Not Found</h2>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">
+            Profile Not Found
+          </h2>
           <p className="text-slate-600 mb-6">{error}</p>
-          <Button onClick={() => router.push('/search')} className="bg-orange-500 hover:bg-orange-600 text-white">
+          <Button
+            onClick={() => router.push("/search")}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+          >
             Back to Search
           </Button>
         </div>
@@ -350,7 +354,7 @@ const [showPhone, setShowPhone] = useState(false);
                 </div>
               </motion.div>
 
-              {/* Contact Info */}
+              {/* Contact Info
               <motion.div
                 className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-3xl p-6 border border-blue-200"
                 initial={{ opacity: 0, y: 20 }}
@@ -367,7 +371,7 @@ const [showPhone, setShowPhone] = useState(false);
                 <Button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-xl">
                   Start Conversation
                 </Button>
-              </motion.div>
+              </motion.div> */}
             </div>
           </div>
         </div>

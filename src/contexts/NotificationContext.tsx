@@ -68,7 +68,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   // Socket reference
   const socketRef = useRef<Socket | null>(null);
+  const activeConversationRef = useRef<string | null>(null);
 
+  // ADD THIS NEW USEEFFECT:
+  // Update the ref when activeConversationId changes
+  useEffect(() => {
+    activeConversationRef.current = activeConversationId;
+  }, [activeConversationId]);
   // Load notifications function
   const loadNotifications = async () => {
     if (!session?.user?.id) return;
@@ -192,8 +198,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     socket.on("notification_update", (data) => {
       console.log("🔔 [GLOBAL] Received notification update:", data);
 
-      // Smart suppression: don't refresh if user is actively viewing this conversation
-      if (data.conversationId && data.conversationId === activeConversationId) {
+      // Smart suppression: use ref instead of state
+      if (
+        data.conversationId &&
+        data.conversationId === activeConversationRef.current
+      ) {
         console.log(
           "🔔 [GLOBAL] Suppressing notification - user is actively viewing conversation:",
           data.conversationId
@@ -216,7 +225,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [session?.user?.id, activeConversationId]);
+  }, [session?.user?.id]);
 
   // Load initial notifications when user logs in
   useEffect(() => {

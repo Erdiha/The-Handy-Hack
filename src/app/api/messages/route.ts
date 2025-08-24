@@ -1,3 +1,4 @@
+//api.messages/route
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { messages, conversations, users } from "@/lib/schema";
