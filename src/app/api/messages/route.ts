@@ -248,6 +248,18 @@ export const POST = withAuth(async (request: AuthenticatedRequest) => {
 // PATCH - Edit a message
 export const PATCH = withAuth(async (request: AuthenticatedRequest) => {
   try {
+    console.log("🔧 PATCH called - checking global.io availability:");
+    console.log("🔧 global.io exists:", !!global.io);
+    console.log("🔧 global.io type:", typeof global.io);
+
+    if (global.io) {
+      console.log("🔧 Socket.io server is available");
+    } else {
+      console.log(
+        "❌ Socket.io server is NOT available - this is the problem!"
+      );
+    }
+
     const body = await request.json();
     const { messageId, content } = body;
 
@@ -274,6 +286,16 @@ export const PATCH = withAuth(async (request: AuthenticatedRequest) => {
         { status: 404 }
       );
     }
+    console.log("🔧 PATCH called - checking global.io availability:");
+    console.log("🔧 global.io exists:", !!global.io);
+    console.log("🔧 global.io type:", typeof global.io);
+    if (global.io) {
+      console.log("🔧 Socket.io server is available");
+    } else {
+      console.log(
+        "❌ Socket.io server is NOT available - this is the problem!"
+      );
+    }
 
     // Update the message
     const [updatedMessage] = await db
@@ -281,6 +303,27 @@ export const PATCH = withAuth(async (request: AuthenticatedRequest) => {
       .set({ content: content.trim() })
       .where(eq(messages.id, msgId))
       .returning();
+
+    if (global.io) {
+      console.log("📡 Broadcasting message edit via socket");
+      console.log("🔧 Edit details:", {
+        conversationId: message.conversationId,
+        messageId: updatedMessage.id.toString(),
+        newContent: updatedMessage.content,
+      });
+
+      global.io
+        .to(`conversation-${message.conversationId}`)
+        .emit("message_edited", {
+          messageId: updatedMessage.id.toString(),
+          newContent: updatedMessage.content,
+          timestamp: formatMessageTime(updatedMessage.createdAt) + " (edited)",
+        });
+
+      console.log(
+        "✅ Edit broadcast sent to room: conversation-" + message.conversationId
+      );
+    }
 
     return NextResponse.json({
       success: true,

@@ -16,6 +16,7 @@ import { AvailabilityData } from "@/types/availability";
 import { CompletedJobsModal } from "@/components/modals/CompletedJobsModal";
 import { ArchivedJobsModal } from "@/components/modals/ArchivedJobsModal";
 import { CustomerJobDetailsModal } from "@/components/modals/CustomerJobDetailsModal";
+import { EmergencyAlertModal } from "@/components/modals/EmergencyAlertModal";
 
 interface SessionUser {
   id: string;
@@ -975,7 +976,9 @@ function CustomerDashboard({
   const [handymenLoading, setHandymenLoading] = useState(true);
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<CustomerJob | null>(null);
-  const [showAllJobs, setShowAllJobs] = useState(false);
+  const [activeTab, setActiveTab] = useState<"all" | "active" | "archived">(
+    "active"
+  );
   const [neighborhoodStats, setNeighborhoodStats] = useState({
     jobsThisWeek: 0,
     avgResponseTime: "",
@@ -985,6 +988,8 @@ function CustomerDashboard({
   const [neighborhoodLoading, setNeighborhoodLoading] = useState(true);
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
+  const [allCustomerJobs, setAllCustomerJobs] = useState<CustomerJob[]>([]);
 
   // All functions
   const fetchAvailabilityStatus = async () => {
@@ -1057,10 +1062,11 @@ function CustomerDashboard({
 
   const fetchCustomerJobs = async () => {
     try {
-      const response = await fetch("/api/customer/jobs");
+      const response = await fetch(`/api/customer/jobs?status=all`); // Always fetch all
       const data = await response.json();
       if (data.success) {
-        setCustomerJobs(data.jobs);
+        setAllCustomerJobs(data.jobs); // Store full dataset
+        setCustomerJobs(data.jobs); // Initialize display data
       }
     } catch (error) {
       console.error("Failed to fetch customer jobs:", error);
@@ -1083,10 +1089,9 @@ function CustomerDashboard({
     }
   };
 
-  // useEffect hooks
   useEffect(() => {
     fetchStats();
-    fetchCustomerJobs();
+    fetchCustomerJobs(); // Add this line
     fetchTrustedHandymen();
     fetchNeighborhoodStats();
   }, []);
@@ -1095,22 +1100,44 @@ function CustomerDashboard({
     fetchAvailabilityStatus();
   }, []);
 
-  const hasActiveJobs = customerJobs.some(
-    (job) => job.status === "accepted" || job.status === "open"
-  );
+  // useEffect(() => {
+  //   if (activeTab) {
+  //     setJobsLoading(true);
+  //     fetchCustomerJobs();
+  //   }
+  // }, [activeTab]);
 
-  const favoriteHandymen = [
+  // Filter jobs based on active tab
+  const getFilteredJobs = () => {
+    switch (activeTab) {
+      case "active":
+        return allCustomerJobs.filter(
+          (job) => job.status === "open" || job.status === "accepted"
+        );
+      case "archived":
+        return allCustomerJobs.filter((job) => job.status === "archived");
+      case "all":
+      default:
+        return allCustomerJobs;
+    }
+  };
+
+  const filteredJobs = getFilteredJobs();
+
+  // Tab configuration
+  const tabs = [
     {
-      name: "Mike Rodriguez",
-      service: "Plumbing",
-      available: true,
-      rating: 4.9,
+      key: "active" as const,
+      label: "Active Jobs",
+      count: allCustomerJobs.filter(
+        (j) => j.status === "open" || j.status === "accepted"
+      ).length,
     },
+    { key: "all" as const, label: "All Jobs", count: allCustomerJobs.length },
     {
-      name: "Carlos Martinez",
-      service: "Painting",
-      available: false,
-      rating: 4.7,
+      key: "archived" as const,
+      label: "Archived",
+      count: allCustomerJobs.filter((j) => j.status === "archived").length,
     },
   ];
 
@@ -1176,88 +1203,95 @@ function CustomerDashboard({
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
         >
-          {hasActiveJobs ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-slate-900">
-                  {showAllJobs ? "All Jobs" : "Active Jobs"}
-                </h2>
-                <Button
-                  onClick={() => setShowAllJobs(!showAllJobs)}
-                  variant="outline"
-                  className="text-sm"
-                >
-                  {showAllJobs ? "Show Active Only" : "Show All Jobs"}
-                </Button>
+          {/* Tabbed Jobs Section */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            {/* Tab Headers */}
+            <div className="border-b border-slate-200">
+              <div className="flex">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === tab.key
+                        ? "border-orange-500 text-orange-600 bg-orange-50"
+                        : "border-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-50"
+                    }`}
+                  >
+                    {tab.label} ({tab.count})
+                  </button>
+                ))}
               </div>
+            </div>
 
+            {/* Tab Content */}
+            <div className="p-8">
               {jobsLoading ? (
                 <div className="text-center py-4">
                   <div className="w-6 h-6 border-2 border-slate-300 border-t-slate-900 rounded-full animate-spin mx-auto mb-2"></div>
                   <p className="text-slate-500">Loading jobs...</p>
                 </div>
+              ) : filteredJobs.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-4">📋</div>
+                  <h3 className="font-semibold text-slate-800 mb-2">
+                    No {activeTab} jobs found
+                  </h3>
+                  <p className="text-slate-600 mb-6">
+                    {activeTab === "active" &&
+                      "Post your first job to get started!"}
+                    {activeTab === "archived" &&
+                      "Archived jobs will appear here."}
+                    {activeTab === "all" && "You haven't posted any jobs yet."}
+                  </p>
+                  {activeTab === "active" && (
+                    <div className="space-y-3">
+                      <Link href="/search" className="block">
+                        <Button className="w-full bg-slate-900 text-white hover:bg-slate-800 py-4 text-lg">
+                          Find Local Help
+                        </Button>
+                      </Link>
+                      <Button
+                        onClick={() => setIsEmergencyModalOpen(true)}
+                        variant="danger"
+                        className="w-full py-4 text-lg"
+                      >
+                        Emergency Help (15 min)
+                      </Button>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-4">
-                  {customerJobs
-                    .filter(
-                      (job) =>
-                        showAllJobs ||
-                        job.status === "accepted" ||
-                        job.status === "open"
-                    )
-                    .map((job) => (
-                      <div
-                        key={job.id}
-                        className="border border-slate-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
-                        onClick={() => {
-                          setSelectedJob(job);
-                          setIsJobModalOpen(true);
-                        }}
-                      >
-                        <h3 className="font-medium text-slate-900">
-                          {job.title}
-                        </h3>
-                        <p className="text-slate-600 text-sm">
-                          {job.status} • {job.category}
-                          {job.status === "completed" && " • ✓ Completed"}
-                          {job.status === "cancelled" && " • ✗ Cancelled"}
+                  {filteredJobs.map((job) => (
+                    <div
+                      key={job.id}
+                      className="border border-slate-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => {
+                        setSelectedJob(job);
+                        setIsJobModalOpen(true);
+                      }}
+                    >
+                      <h3 className="font-medium text-slate-900">
+                        {job.title}
+                      </h3>
+                      <p className="text-slate-600 text-sm">
+                        {job.status} • {job.category}
+                        {job.status === "completed" && " • ✓ Completed"}
+                        {job.status === "cancelled" && " • ✗ Cancelled"}
+                        {job.status === "archived" && " • 📦 Archived"}
+                      </p>
+                      {job.handyman && (
+                        <p className="text-slate-500 text-sm">
+                          Handyman: {job.handyman.name}
                         </p>
-                        {job.handyman && (
-                          <p className="text-slate-500 text-sm">
-                            Handyman: {job.handyman.name}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-          ) : (
-            <div className="bg-white rounded-2xl border border-slate-200 p-12 shadow-sm text-center">
-              <div className="max-w-md mx-auto">
-                <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <div className="w-8 h-8 bg-slate-400 rounded-lg"></div>
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-4">
-                  Ready to get something fixed?
-                </h2>
-                <p className="text-slate-600 mb-8 leading-relaxed">
-                  Browse trusted handymen in your neighborhood or get emergency
-                  help within 15 minutes.
-                </p>
-                <div className="space-y-3">
-                  <Link href="/search" className="block">
-                    <Button className="w-full bg-slate-900 text-white hover:bg-slate-800 py-4 text-lg">
-                      Find Local Help
-                    </Button>
-                  </Link>
-                  <Button variant="danger" className="w-full py-4 text-lg">
-                    Emergency Help (15 min)
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
         </motion.div>
 
         {/* Sidebar */}
@@ -1379,11 +1413,18 @@ function CustomerDashboard({
           </div>
         </motion.div>
       </div>
+
+      {/* Modals */}
       <CustomerJobDetailsModal
         isOpen={isJobModalOpen}
         onClose={() => setIsJobModalOpen(false)}
         job={selectedJob}
-        onJobUpdate={fetchCustomerJobs} // Add this
+        onJobUpdate={fetchCustomerJobs}
+      />
+
+      <EmergencyAlertModal
+        isOpen={isEmergencyModalOpen}
+        onClose={() => setIsEmergencyModalOpen(false)}
       />
     </div>
   );

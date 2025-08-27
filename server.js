@@ -32,6 +32,8 @@ app.prepare().then(() => {
     pingInterval: 25000,
   });
 
+  global.io = io;
+
   io.on("connection", (socket) => {
     console.log(`🔌 User connected: ${socket.id}`);
 

@@ -2,6 +2,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
 
+// 🔍 DEBUG: Check env variables
+console.log("🔍 CLOUDINARY_CLOUD_NAME:", process.env.CLOUDINARY_CLOUD_NAME);
+console.log("🔍 CLOUDINARY_API_KEY:", process.env.CLOUDINARY_API_KEY);
+console.log(
+  "🔍 All env keys:",
+  Object.keys(process.env).filter((key) => key.includes("CLOUDINARY"))
+);
+
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,

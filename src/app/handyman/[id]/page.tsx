@@ -181,12 +181,12 @@ export default function HandymanProfilePage() {
                         "Quote Request"
                       )}`}
                     >
-                      <Button
+                      {/* <Button
                         variant="outline"
                         className="w-full border-2 border-orange-300 text-orange-700 hover:bg-orange-50 font-semibold py-3 rounded-xl"
                       >
                         📋 Request Quote
-                      </Button>
+                      </Button> */}
                     </Link>
                   </div>
 
@@ -329,7 +329,7 @@ export default function HandymanProfilePage() {
               </motion.div>
 
               {/* Availability */}
-              <motion.div
+              {/* <motion.div
                 className="bg-white rounded-3xl shadow-lg border border-orange-100 p-6"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -352,7 +352,7 @@ export default function HandymanProfilePage() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </motion.div> */}
 
               {/* Contact Info
               <motion.div

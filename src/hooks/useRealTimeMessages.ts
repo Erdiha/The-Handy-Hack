@@ -46,12 +46,18 @@ export interface Message {
 interface UseRealTimeConfig {
   conversationId: string | null;
   onNewMessage?: (message: Message) => void;
+  onMessageEdit?: (editData: {
+    messageId: string;
+    newContent: string;
+    timestamp: string;
+  }) => void;
   enabled?: boolean;
 }
 
 export const useRealTimeMessages = ({
   conversationId,
   onNewMessage,
+  onMessageEdit,
   enabled = true,
 }: UseRealTimeConfig) => {
   const { data: session } = useSession();
@@ -66,6 +72,24 @@ export const useRealTimeMessages = ({
       conversationId: string;
     }>
   >([]);
+
+  // Store stable references to avoid re-runs
+  const onNewMessageRef = useRef(onNewMessage);
+  const onMessageEditRef = useRef(onMessageEdit);
+  const setActiveConversationRef = useRef(setActiveConversation);
+
+  // Update refs when values change
+  useEffect(() => {
+    onNewMessageRef.current = onNewMessage;
+  }, [onNewMessage]);
+
+  useEffect(() => {
+    onMessageEditRef.current = onMessageEdit;
+  }, [onMessageEdit]);
+
+  useEffect(() => {
+    setActiveConversationRef.current = setActiveConversation;
+  }, [setActiveConversation]);
 
   // Get global socket from window (set by NotificationContext)
   const getGlobalSocket = useCallback((): Socket | null => {
@@ -88,12 +112,15 @@ export const useRealTimeMessages = ({
     );
 
     // Set active conversation for notification suppression
-    setActiveConversation(conversationId);
+    setActiveConversationRef.current?.(conversationId);
 
     // Handle new messages
     const handleNewMessage = (socketMessage: SocketMessage): void => {
       console.log("📨 [MESSAGES] Received new message:", socketMessage);
-      if (onNewMessage && socketMessage.conversationId === conversationId) {
+      if (
+        onNewMessageRef.current &&
+        socketMessage.conversationId === conversationId
+      ) {
         const message: Message = {
           id: socketMessage.id,
           senderId: socketMessage.senderId,
@@ -103,7 +130,7 @@ export const useRealTimeMessages = ({
           isRead: socketMessage.isRead,
           conversationId: socketMessage.conversationId,
         };
-        onNewMessage(message);
+        onNewMessageRef.current(message);
       }
     };
 
@@ -153,6 +180,18 @@ export const useRealTimeMessages = ({
       }
     };
 
+    // Handle message edits
+    const handleMessageEdit = (editData: {
+      messageId: string;
+      newContent: string;
+      timestamp: string;
+    }): void => {
+      console.log("🔏 [HOOK] Received message edit:", editData);
+      if (onMessageEditRef.current) {
+        onMessageEditRef.current(editData);
+      }
+    };
+
     // Add event listeners
     socket.on("new_message", handleNewMessage);
     socket.on("online_users", handleOnlineUsers);
@@ -160,6 +199,7 @@ export const useRealTimeMessages = ({
     socket.on("user_offline", handleUserOffline);
     socket.on("user_started_typing", handleTypingStart);
     socket.on("user_stopped_typing", handleTypingStop);
+    socket.on("message_edited", handleMessageEdit);
 
     // Join conversation room
     socket.emit("join_conversation", conversationId);
@@ -179,12 +219,13 @@ export const useRealTimeMessages = ({
       socket.off("user_offline", handleUserOffline);
       socket.off("user_started_typing", handleTypingStart);
       socket.off("user_stopped_typing", handleTypingStop);
+      socket.off("message_edited", handleMessageEdit);
 
       // Leave conversation room
       socket.emit("leave_conversation", conversationId);
 
-      // Clear active conversation
-      setActiveConversation(null);
+      // Clear active conversation only when actually changing conversations
+      // setActiveConversation(null); // REMOVED - causes socket reset
 
       // Clear typing indicators
       setTypingUsers([]);
@@ -192,10 +233,8 @@ export const useRealTimeMessages = ({
   }, [
     conversationId,
     enabled,
-    session?.user,
-    onNewMessage,
-    setActiveConversation,
-    getGlobalSocket,
+    session?.user?.id, // Only use stable ID, not whole session object
+    // Removed unstable dependencies: onNewMessage, setActiveConversation, getGlobalSocket
   ]);
 
   // Monitor global socket connection status

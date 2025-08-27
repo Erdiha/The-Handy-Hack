@@ -7,6 +7,8 @@ import { eq, desc } from "drizzle-orm";
 export const GET = withAuth(async (request: AuthenticatedRequest) => {
   try {
     const userId = parseInt(request.user!.id);
+    const { searchParams } = new URL(request.url);
+    const statusFilter = searchParams.get("status") || "all";
 
     const customerJobs = await db
       .select({
@@ -31,7 +33,26 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
       .where(eq(jobs.postedBy, userId))
       .orderBy(desc(jobs.createdAt));
 
-    const transformedJobs = customerJobs.map((job) => ({
+    // Filter jobs based on status parameter
+    let filteredJobs = customerJobs;
+
+    switch (statusFilter) {
+      case "active":
+        filteredJobs = customerJobs.filter(
+          (job) => job.status === "open" || job.status === "accepted"
+        );
+        break;
+      case "archived":
+        filteredJobs = customerJobs.filter((job) => job.status === "archived");
+        break;
+      case "all":
+      default:
+        // Show all jobs (no additional filtering)
+        filteredJobs = customerJobs;
+        break;
+    }
+
+    const transformedJobs = filteredJobs.map((job) => ({
       id: job.id.toString(),
       title: job.title,
       description: job.description,
@@ -51,7 +72,7 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
             phone: job.handymanPhone,
           }
         : null,
-      responses: Math.floor(Math.random() * 8) + 1,
+      responses: 0, // Set to 0 instead of random number
     }));
 
     return NextResponse.json({

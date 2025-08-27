@@ -143,13 +143,13 @@ export default function SearchPage() {
               </div>
 
               {/* Filters Row */}
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 ">
                 {/* Service Filter */}
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-2 ">
                   <select
                     value={selectedService}
                     onChange={(e) => setSelectedService(e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 bg-white text-slate-700"
+                    className="w-full px-4 py-3  border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 bg-white text-slate-700"
                   >
                     {services.map((service) => (
                       <option key={service} value={service}>
@@ -160,7 +160,7 @@ export default function SearchPage() {
                 </div>
 
                 {/* Available Now Toggle */}
-                <div>
+                {/* <div>
                   <button
                     onClick={() => setAvailableOnly(!availableOnly)}
                     className={`w-full px-4 py-3 rounded-xl font-semibold transition-all duration-200 ${
@@ -171,10 +171,10 @@ export default function SearchPage() {
                   >
                     {availableOnly ? "🟢 Available Now" : "⭕ All Pros"}
                   </button>
-                </div>
+                </div> */}
 
                 {/* Post Job Button */}
-                <div>
+                <div className="">
                   <Link href="/post-job">
                     <button className="w-full px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg">
                       📝 Post Job
@@ -277,7 +277,7 @@ export default function SearchPage() {
           <div className="lg:col-span-1">
             <div className="sticky top-8 space-y-6">
               {/* Quick Actions */}
-              <div className="bg-white rounded-3xl shadow-lg border border-orange-100 p-6">
+              {/* <div className="bg-white rounded-3xl shadow-lg border border-orange-100 p-6">
                 <h3 className="text-lg font-bold text-slate-800 mb-4">
                   🤳 Show Us What&apos;s Wrong
                 </h3>
@@ -290,7 +290,7 @@ export default function SearchPage() {
                     AI will find the perfect pro
                   </p>
                 </div>
-              </div>
+              </div> */}
 
               {/* Community Stats */}
               <div className="bg-white rounded-3xl shadow-lg border border-orange-100 p-6">

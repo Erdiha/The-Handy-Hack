@@ -37,6 +37,7 @@ export function CustomerJobDetailsModal({
   onJobUpdate,
 }: CustomerJobDetailsModalProps) {
   const [actionLoading, setActionLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!isOpen || !job) return null;
 
@@ -56,6 +57,50 @@ export function CustomerJobDetailsModal({
       }
     } catch (error) {
       alert("Failed to cancel job");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  //handles delete
+  const handleDeleteJob = async () => {
+    if (!job) return;
+
+    setActionLoading(true);
+    try {
+      const response = await fetch(`/api/jobs/${job.id}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        alert("Job deleted successfully");
+        onJobUpdate();
+        onClose();
+      }
+    } catch (error) {
+      alert("Failed to delete job");
+    } finally {
+      setActionLoading(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleArchiveJob = async () => {
+    if (!job) return;
+
+    setActionLoading(true);
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/archive`, {
+        method: "PATCH",
+      });
+
+      if (response.ok) {
+        alert("Job archived successfully");
+        onJobUpdate();
+        onClose();
+      }
+    } catch (error) {
+      alert("Failed to archive job");
     } finally {
       setActionLoading(false);
     }
@@ -178,32 +223,73 @@ export function CustomerJobDetailsModal({
             </div>
           )}
         </div>
+        <div className="p-6 border-t border-slate-200">
+          {/* Delete confirmation warning */}
+          {showDeleteConfirm && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 text-sm font-medium">
+                Are you sure? This will permanently delete the job.
+              </p>
+            </div>
+          )}
 
-        <div className="p-6 border-t border-slate-200 flex gap-3">
-          <Button
-            onClick={onClose}
-            variant="outline"
-            className="flex-1 border-slate-300 text-slate-700"
-          >
-            Close
-          </Button>
-
-          {job.status === "open" && (
+          <div className="flex gap-3">
             <Button
-              onClick={handleCancelJob}
-              disabled={actionLoading}
-              variant="danger"
-              className="flex-1"
+              onClick={onClose}
+              variant="outline"
+              className="flex-1 border-slate-300 text-slate-700"
             >
-              {actionLoading ? "Cancelling..." : "Cancel Job"}
+              Close
             </Button>
-          )}
 
-          {job.handyman && job.status === "accepted" && (
-            <Button className="flex-1 bg-green-500 hover:bg-green-600 text-white">
-              Contact Handyman
-            </Button>
-          )}
+            {job.status === "open" && (
+              <>
+                <Button
+                  onClick={
+                    showDeleteConfirm
+                      ? handleDeleteJob
+                      : () => setShowDeleteConfirm(true)
+                  }
+                  disabled={actionLoading}
+                  variant="danger"
+                  className="flex-1"
+                >
+                  {actionLoading
+                    ? "Deleting..."
+                    : showDeleteConfirm
+                    ? "Confirm Delete"
+                    : "Delete Job"}
+                </Button>
+                <Button
+                  onClick={
+                    showDeleteConfirm
+                      ? () => setShowDeleteConfirm(false)
+                      : handleArchiveJob
+                  }
+                  disabled={actionLoading}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  {actionLoading
+                    ? "Archiving..."
+                    : showDeleteConfirm
+                    ? "Cancel"
+                    : "Archive Job"}
+                </Button>
+              </>
+            )}
+
+            {(job.status === "accepted" || job.status === "completed") && (
+              <Button
+                onClick={handleArchiveJob}
+                disabled={actionLoading}
+                variant="outline"
+                className="flex-1"
+              >
+                {actionLoading ? "Archiving..." : "Archive Job"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

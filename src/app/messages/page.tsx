@@ -67,6 +67,8 @@ export default function MessagesPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
 
   // Refs for cleanup
   const initializedRef = useRef(false);
@@ -105,16 +107,63 @@ export default function MessagesPage() {
         setMessages((prev) => {
           const exists = prev.some((msg) => msg.id === newMsg.id);
           if (exists) return prev;
-          return [...prev, newMsg];
-        });
 
+          const updated = [...prev, newMsg]; // ✅ Use 'newMsg' with all the proper fields
+          return updated.slice(-50);
+        });
         // Update conversation list
         loadConversations();
       },
       [selectedConversationId, session?.user?.id]
     ),
+    onMessageEdit: (editData) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === editData.messageId
+            ? {
+                ...msg,
+                content: editData.newContent,
+                timestamp: editData.timestamp,
+              }
+            : msg
+        )
+      );
+    },
   });
 
+  useEffect(() => {
+    console.log(
+      "🔄 selectedConversationId changed to:",
+      selectedConversationId
+    );
+  }, [selectedConversationId]);
+
+  useEffect(() => {
+    if (selectedConversationId && window.globalSocket) {
+      // const handleMessageEdit = (editData: {
+      //   messageId: string;
+      //   newContent: string;
+      //   timestamp: string;
+      // }) => {
+      //   setMessages((prev) => {
+      //     // Only update if message exists locally - otherwise ignore silently
+      //     return prev.map((msg) =>
+      //       msg.id === editData.messageId
+      //         ? {
+      //             ...msg,
+      //             content: editData.newContent,
+      //             timestamp: editData.timestamp,
+      //           }
+      //         : msg
+      //     );
+      //   });
+      // };
+      // window.globalSocket.on("message_edited", handleMessageEdit);
+      // return () => {
+      //   window.globalSocket?.off("message_edited", handleMessageEdit);
+      // };
+    }
+  }, [selectedConversationId, messages.length]); // Added messages.length to deps
   // Check mobile viewport
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -488,6 +537,83 @@ export default function MessagesPage() {
     }
   };
 
+  // ✅ EDIT MESSAGE HELPERS
+  const canEditMessage = (message: Message): boolean => {
+    // Only sender can edit
+    if (message.senderId !== session?.user?.id) return false;
+
+    // Always allow editing optimistic messages
+    if (message.isOptimistic) return true;
+
+    // Check 1-hour time limit
+    if (message.createdAt) {
+      const messageAge =
+        new Date().getTime() - new Date(message.createdAt).getTime();
+      const oneHour = 60 * 60 * 1000;
+      return messageAge <= oneHour;
+    }
+
+    return false;
+  };
+
+  const startEdit = (message: Message) => {
+    setEditingId(message.id);
+    setEditContent(message.content);
+  };
+
+  const cancelEdit = () => {
+    console.log("🚫 cancelEdit called - this might trigger conversation reset");
+
+    setEditingId(null);
+    setEditContent("");
+  };
+
+  const saveEdit = async () => {
+    if (!editingId || !editContent.trim()) return;
+
+    // Optimistically update UI immediately
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === editingId
+          ? {
+              ...msg,
+              content: editContent.trim(),
+              timestamp: `${new Date().toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })} (edited)`,
+            }
+          : msg
+      )
+    );
+
+    // Close edit mode immediately
+    cancelEdit();
+
+    try {
+      // Save to database
+      const response = await fetch("/api/messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageId: editingId,
+          content: editContent.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log("✅ Edit saved to database");
+        // Sender already sees edit via optimistic update above
+        // Recipient will get it via socket or next reload
+      }
+    } catch (error) {
+      console.error("❌ Edit failed:", error);
+      // Could revert optimistic update here if needed
+    }
+  };
   // Handle typing
   const handleInputChange = (value: string) => {
     setNewMessage(value);
@@ -504,6 +630,46 @@ export default function MessagesPage() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
+    }
+  };
+  const deleteMessage = async (message: Message) => {
+    const confirmMessage = `Delete this message? This action cannot be undone.`;
+
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      console.log("🗑️ Deleting message:", message.id);
+
+      // Optimistically remove from UI
+      setMessages((prev) => prev.filter((msg) => msg.id !== message.id));
+
+      // Delete from API
+      const response = await fetch(`/api/messages?messageId=${message.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteType: "everyone" }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log("✅ Message deleted successfully");
+        // Already removed optimistically above
+      } else {
+        console.error("❌ Delete failed:", data.error);
+        alert("Failed to delete message: " + data.error);
+        // Revert optimistic delete by reloading messages
+        if (selectedConversationId) {
+          loadMessages(selectedConversationId);
+        }
+      }
+    } catch (error) {
+      console.error("❌ Delete error:", error);
+      alert("Failed to delete message");
+      // Revert optimistic delete by reloading messages
+      if (selectedConversationId) {
+        loadMessages(selectedConversationId);
+      }
     }
   };
 
@@ -835,6 +1001,14 @@ export default function MessagesPage() {
                   ) : (
                     messages.map((message) => {
                       const isOwn = message.senderId === session?.user?.id;
+                      const isEditing = editingId === message.id;
+                      const canEdit = canEditMessage(message);
+                      console.log(
+                        "🎨 Rendering message:",
+                        message.id,
+                        "content:",
+                        message.content.substring(0, 20)
+                      );
 
                       return (
                         <motion.div
@@ -850,7 +1024,7 @@ export default function MessagesPage() {
                           }`}
                         >
                           <div
-                            className={`max-w-[85%] sm:max-w-xs lg:max-w-md px-3 lg:px-4 py-2 lg:py-3 rounded-2xl transition-all duration-200 ${
+                            className={`max-w-[85%] sm:max-w-xs lg:max-w-md px-3 lg:px-4 py-2 lg:py-3 rounded-2xl relative group transition-all duration-200 ${
                               isOwn
                                 ? `bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg ${
                                     message.isOptimistic ? "opacity-70" : ""
@@ -858,23 +1032,93 @@ export default function MessagesPage() {
                                 : "bg-gradient-to-br from-slate-100 to-slate-50 text-slate-800 shadow-md"
                             }`}
                           >
-                            <p className="text-sm lg:text-base leading-relaxed break-words">
-                              {message.content}
-                            </p>
-                            <div className="flex items-center justify-between mt-2">
-                              <p
-                                className={`text-xs ${
-                                  isOwn ? "text-orange-100" : "text-slate-500"
-                                }`}
-                              >
-                                {message.timestamp}
-                              </p>
-                              {message.isOptimistic && (
-                                <span className="text-xs text-orange-200 ml-2">
-                                  Sending...
-                                </span>
-                              )}
-                            </div>
+                            {isEditing ? (
+                              /* ✅ EDIT MODE UI */
+                              <div className="space-y-2">
+                                <textarea
+                                  value={editContent}
+                                  onChange={(e) =>
+                                    setEditContent(e.target.value)
+                                  }
+                                  className="w-full p-2 text-sm bg-white text-slate-800 rounded-lg resize-none border border-slate-200 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                  rows={2}
+                                  autoFocus
+                                  onKeyPress={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                      e.preventDefault();
+                                      saveEdit();
+                                    }
+                                    if (e.key === "Escape") {
+                                      cancelEdit();
+                                    }
+                                  }}
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={saveEdit}
+                                    className="text-xs px-3 py-1 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={cancelEdit}
+                                    className="text-xs px-3 py-1 bg-gray-500 text-white rounded-full hover:bg-gray-600 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              /* ✅ NORMAL MESSAGE UI */
+                              <>
+                                <p className="text-sm lg:text-base leading-relaxed break-words">
+                                  {message.content}
+                                </p>
+                                <div className="flex items-center justify-between mt-2">
+                                  <p
+                                    className={`text-xs ${
+                                      isOwn
+                                        ? "text-orange-100"
+                                        : "text-slate-500"
+                                    }`}
+                                  >
+                                    {message.timestamp}
+                                  </p>
+                                  {message.isOptimistic && (
+                                    <span className="text-xs text-orange-200 ml-2">
+                                      Sending...
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* ✅ EDIT BUTTON (shows on hover for own messages) */}
+                                {/* ✅ EDIT & DELETE BUTTONS */}
+                                {isOwn && (canEdit || message.canDelete) && (
+                                  <div className="absolute -top-8 -right-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                    <div className="flex gap-1 bg-white rounded-lg shadow-lg border p-1">
+                                      {canEdit && (
+                                        <button
+                                          onClick={() => startEdit(message)}
+                                          className="p-1 text-slate-600 hover:text-blue-600 rounded text-xs transition-colors"
+                                          title="Edit message"
+                                        >
+                                          ✏️
+                                        </button>
+                                      )}
+                                      {message.canDelete && (
+                                        <button
+                                          onClick={() => deleteMessage(message)}
+                                          className="p-1 text-slate-600 hover:text-red-600 rounded text-xs transition-colors"
+                                          title="Delete message"
+                                        >
+                                          🗑️
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            )}
                           </div>
                         </motion.div>
                       );

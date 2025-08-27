@@ -11,123 +11,192 @@ export default function PostJobPage() {
   const { data: session } = useSession();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]); // Store URLs instead of Files
+  // const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
+  const [formData, setFormData] = useState({
+    title: "",
+    description: "",
+    category: "",
+    urgency: "flexible",
+    budget: "hour",
+    budgetAmount: "",
+    location: "",
+    // photos: [] as string[],
+  });
+
+  // Enhanced validation functions
   const validateTitle = (title: string): string => {
     if (!title.trim()) return "Job title is required";
     if (title.trim().length < 5)
       return "Job title must be at least 5 characters";
     if (title.trim().length > 100)
       return "Job title must be less than 100 characters";
-    return ""; // No error
+
+    // Check for spam patterns
+    if (/(.)\1{4,}/.test(title)) return "Please use a proper job title";
+
+    return "";
   };
+
   const validateDescription = (description: string): string => {
     if (!description.trim()) return "Job description is required";
     if (description.trim().length < 20)
       return "Description must be at least 20 characters";
     if (description.trim().length > 1000)
       return "Description must be less than 1000 characters";
+
+    // Encourage details
+    const wordCount = description.trim().split(/\s+/).length;
+    if (wordCount < 10)
+      return "Please provide more details (at least 10 words)";
+
     return "";
   };
 
-const [formData, setFormData] = useState({
-  title: "",
-  description: "",
-  category: "",
-  urgency: "flexible",
-  budget: "hour",
-  budgetAmount: "",
-  location: "",
-  photos: [] as string[], // FIXED: Changed from File[] to string[]
-});
+  const validateBudget = (budget: string, budgetAmount: string): string => {
+    if (budget !== "quote" && !budgetAmount.trim()) {
+      return "Budget amount is required";
+    }
 
-  const categories = [
-    "Plumbing",
-    "Electrical",
-    "Painting",
-    "Carpentry",
-    "Appliance Repair",
-    "Furniture Assembly",
-    "Home Cleaning",
-    "Landscaping",
-    "Tile Work",
-    "Drywall Repair",
-    "General Repair",
-    "Other",
-  ];
+    if (budgetAmount) {
+      const amount = parseFloat(budgetAmount);
+      if (isNaN(amount) || amount <= 0) {
+        return "Please enter a valid amount";
+      }
+      if (amount > 10000) {
+        return "Maximum budget is $10,000";
+      }
+    }
+
+    return "";
+  };
+
+  const validateCategory = (category: string): string => {
+    if (!category) return "Please select a category";
+    return "";
+  };
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-  };
 
-  // Replace your existing photo upload code with this:
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    setUploading(true);
-
-    try {
-      console.log("Starting upload of", files.length, "files");
-
-      const uploadedUrls: string[] = [];
-
-      // Upload files one by one for better debugging
-      for (const file of files) {
-        const timestamp = Date.now();
-        const filename = `job-photos/${timestamp}-${file.name}`;
-
-        console.log("Uploading:", filename);
-
-        const response = await fetch(
-          `/api/upload?filename=${encodeURIComponent(filename)}`,
-          {
-            method: "POST",
-            body: file,
-          }
-        );
-
-        const result = await response.json();
-        console.log("Upload result:", result);
-
-        if (!result.success) {
-          throw new Error(result.error || "Upload failed");
-        }
-
-        uploadedUrls.push(result.url);
-      }
-
-      console.log("All uploads complete. URLs:", uploadedUrls);
-
-      // Update formData with new photo URLs
-      setFormData((prev) => {
-        const newData = {
-          ...prev,
-          photos: [...prev.photos, ...uploadedUrls],
-        };
-        console.log("Updated formData.photos:", newData.photos);
-        return newData;
-      });
-    } catch (error) {
-      console.error("Upload failed:", error);
-      alert("Failed to upload photos. Please try again.");
-    } finally {
-      setUploading(false);
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: "" }));
     }
   };
 
-  const removePhoto = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      photos: prev.photos.filter((_, i) => i !== index),
-    }));
-  };
+  // Enhanced photo upload
+  // const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const files = Array.from(e.target.files || []);
+  //   if (files.length === 0) return;
+
+  //   // Validate files
+  //   const maxSize = 5 * 1024 * 1024; // 5MB
+  //   const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+  //   const validFiles = files.filter((file) => {
+  //     if (file.size > maxSize) {
+  //       alert(`${file.name} is too large. Max size is 5MB.`);
+  //       return false;
+  //     }
+  //     if (!allowedTypes.includes(file.type)) {
+  //       alert(`${file.name} is not a supported image format.`);
+  //       return false;
+  //     }
+  //     return true;
+  //   });
+
+  //   if (validFiles.length === 0) return;
+
+  //   setUploading(true);
+
+  //   try {
+  //     console.log("📸 Starting upload of", validFiles.length, "files");
+
+  //     const uploadedUrls: string[] = [];
+
+  //     for (const file of validFiles) {
+  //       const timestamp = Date.now();
+  //       const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  //       const filename = `job-photos/${timestamp}-${cleanName}`;
+
+  //       console.log("📤 Uploading:", filename);
+
+  //       const response = await fetch(
+  //         `/api/upload?filename=${encodeURIComponent(filename)}`,
+  //         {
+  //           method: "POST",
+  //           body: file,
+  //         }
+  //       );
+
+  //       if (!response.ok) {
+  //         throw new Error(`Upload failed: ${response.statusText}`);
+  //       }
+
+  //       const result = await response.json();
+
+  //       if (!result.success) {
+  //         throw new Error(result.error || "Upload failed");
+  //       }
+
+  //       uploadedUrls.push(result.url);
+  //       console.log("✅ Uploaded:", result.url);
+  //     }
+
+  //     // Update formData with new photo URLs
+  //     setFormData((prev) => ({
+  //       ...prev,
+  //       photos: [...prev.photos, ...uploadedUrls],
+  //     }));
+
+  //     console.log("🎉 All uploads complete");
+  //   } catch (error) {
+  //     console.error("❌ Upload failed:", error);
+  //     alert(
+  //       `Failed to upload photos: ${
+  //         error instanceof Error ? error.message : "Unknown error"
+  //       }`
+  //     );
+  //   } finally {
+  //     setUploading(false);
+  //     // Clear the input
+  //     e.target.value = "";
+  //   }
+  // };
+
+  // const removePhoto = (index: number) => {
+  //   setFormData((prev) => ({
+  //     ...prev,
+  //     photos: prev.photos.filter((_, i) => i !== index),
+  //   }));
+  // };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate all fields
+    const titleError = validateTitle(formData.title);
+    const descError = validateDescription(formData.description);
+    const budgetError = validateBudget(formData.budget, formData.budgetAmount);
+    const categoryError = validateCategory(formData.category);
+
+    const newErrors = {
+      title: titleError,
+      description: descError,
+      budget: budgetError,
+      category: categoryError,
+    };
+
+    setErrors(newErrors);
+
+    // Stop if there are errors
+    if (titleError || descError || budgetError || categoryError) {
+      console.log("❌ Form validation failed");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -146,9 +215,11 @@ const [formData, setFormData] = useState({
         router.push("/jobs?posted=true");
       } else {
         console.error("Failed to post job:", data.error);
+        alert("Failed to post job: " + data.error);
       }
     } catch (error) {
       console.error("Failed to post job:", error);
+      alert("Failed to post job. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -189,8 +260,7 @@ const [formData, setFormData] = useState({
             className="bg-orange-50 rounded-3xl shadow-xl border border-orange-100 overflow-hidden"
           >
             <div className="p-8 space-y-8">
-              {/* Job Title - Updated with Validation */}
-              {/* Job Title - Clean Validation */}
+              {/* Job Title */}
               <div>
                 <label className="block text-lg font-semibold text-slate-800 mb-3">
                   What do you need done?
@@ -198,17 +268,7 @@ const [formData, setFormData] = useState({
                 <input
                   type="text"
                   value={formData.title}
-                  onChange={(e) => {
-                    handleInputChange("title", e.target.value);
-                    // Clear error when user starts typing
-                    if (errors.title) {
-                      setErrors((prev) => ({ ...prev, title: "" }));
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const error = validateTitle(e.target.value);
-                    setErrors((prev) => ({ ...prev, title: error }));
-                  }}
+                  onChange={(e) => handleInputChange("title", e.target.value)}
                   placeholder="e.g., Fix leaky kitchen faucet, Install ceiling fan, Paint living room"
                   className={`w-full px-4 py-4 text-lg border bg-white rounded-2xl focus:ring-2 focus:ring-orange-500 outline-none transition-all duration-200 ${
                     errors.title
@@ -222,66 +282,87 @@ const [formData, setFormData] = useState({
                 )}
               </div>
 
-              {/* Category & Urgency */}
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-lg font-semibold text-slate-800 mb-3">
-                    Category
-                  </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) =>
-                      handleInputChange("category", e.target.value)
-                    }
-                    className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 bg-white"
-                    required
-                  >
-                    <option value="">Select category</option>
-                    {categories.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
+              {/* Enhanced Category Selection */}
+              <div>
+                <label className="block text-lg font-semibold text-slate-800 mb-3">
+                  What type of work is this?
+                </label>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {[
+                    { name: "Plumbing", icon: "🔧", color: "blue" },
+                    { name: "Electrical", icon: "⚡", color: "yellow" },
+                    { name: "Painting", icon: "🎨", color: "purple" },
+                    { name: "Carpentry", icon: "🔨", color: "orange" },
+                    { name: "Appliance Repair", icon: "🔌", color: "green" },
+                    { name: "Furniture Assembly", icon: "🪑", color: "brown" },
+                    { name: "Home Cleaning", icon: "🧹", color: "pink" },
+                    { name: "Landscaping", icon: "🌱", color: "green" },
+                    { name: "Tile Work", icon: "⬜", color: "gray" },
+                    { name: "Drywall Repair", icon: "🧱", color: "red" },
+                    { name: "General Repair", icon: "🛠️", color: "slate" },
+                    { name: "Other", icon: "❓", color: "gray" },
+                  ].map((category) => (
+                    <button
+                      key={category.name}
+                      type="button"
+                      onClick={() =>
+                        handleInputChange("category", category.name)
+                      }
+                      className={`p-4 rounded-xl border-2 transition-all duration-200 text-center hover:scale-105 ${
+                        formData.category === category.name
+                          ? "border-orange-500 bg-orange-50 shadow-lg"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
+                      }`}
+                    >
+                      <div className="text-2xl mb-2">{category.icon}</div>
+                      <div
+                        className={`text-sm font-medium ${
+                          formData.category === category.name
+                            ? "text-orange-700"
+                            : "text-slate-700"
+                        }`}
+                      >
+                        {category.name}
+                      </div>
+                    </button>
+                  ))}
                 </div>
 
-                <div>
-                  <label className="block text-lg font-semibold text-slate-800 mb-3">
-                    When do you need this done?
-                  </label>
-                  <select
-                    value={formData.urgency}
-                    onChange={(e) =>
-                      handleInputChange("urgency", e.target.value)
-                    }
-                    className="w-full px-4 bg-white py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 "
-                  >
-                    <option value="asap">ASAP (Today/Tomorrow)</option>
-                    <option value="week">This week</option>
-                    <option value="flexible">I&apos;m flexible</option>
-                    <option value="emergency">Emergency (Now!)</option>
-                  </select>
-                </div>
+                {errors.category && (
+                  <p className="mt-2 text-sm text-red-600">
+                    ⚠️ {errors.category}
+                  </p>
+                )}
               </div>
 
-              {/* Description - With Validation */}
+              {/* Urgency */}
+              <div>
+                <label className="block text-lg font-semibold text-slate-800 mb-3">
+                  When do you need this done?
+                </label>
+                <select
+                  value={formData.urgency}
+                  onChange={(e) => handleInputChange("urgency", e.target.value)}
+                  className="w-full px-4 bg-white py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
+                >
+                  <option value="asap">ASAP (Today/Tomorrow)</option>
+                  <option value="week">This week</option>
+                  <option value="flexible">I&apos;m flexible</option>
+                  <option value="emergency">Emergency (Now!)</option>
+                </select>
+              </div>
+
+              {/* Description */}
               <div>
                 <label className="block text-lg font-semibold text-slate-800 mb-3">
                   Describe the job in detail
                 </label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => {
-                    handleInputChange("description", e.target.value);
-                    // Clear error when user starts typing
-                    if (errors.description) {
-                      setErrors((prev) => ({ ...prev, description: "" }));
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const error = validateDescription(e.target.value);
-                    setErrors((prev) => ({ ...prev, description: error }));
-                  }}
+                  onChange={(e) =>
+                    handleInputChange("description", e.target.value)
+                  }
                   rows={5}
                   placeholder="Be specific about what needs to be done, any materials required, access to the area, etc. The more details you provide, the better quotes you'll receive."
                   className={`w-full px-4 py-4 text-lg border bg-white rounded-2xl focus:ring-2 focus:ring-orange-500 outline-none transition-all duration-200 resize-none ${
@@ -323,8 +404,7 @@ const [formData, setFormData] = useState({
                     onChange={(e) =>
                       handleInputChange("budget", e.target.value)
                     }
-                    className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 
-                    bg-white"
+                    className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 bg-white"
                   >
                     <option value="hour">Hourly rate</option>
                     <option value="fixed">Fixed price</option>
@@ -348,6 +428,11 @@ const [formData, setFormData] = useState({
                     </div>
                   )}
                 </div>
+                {errors.budget && (
+                  <p className="mt-2 text-sm text-red-600">
+                    ⚠️ {errors.budget}
+                  </p>
+                )}
               </div>
 
               {/* Location */}
@@ -367,14 +452,14 @@ const [formData, setFormData] = useState({
                 />
               </div>
 
-              {/* Photo Upload - COMPLETE REPLACEMENT */}
-              <div>
-                <label className="block text-lg font-semibold text-slate-800 mb-3">
+              {/* Photo Upload */}
+              {/* <div> */}
+              {/* <label className="block text-lg font-semibold text-slate-800 mb-3">
                   Photos (Optional)
-                </label>
-                <div className="space-y-4">
-                  {/* Upload Area */}
-                  <div
+                </label> */}
+              {/* <div className="space-y-4"> */}
+              {/* Upload Area */}
+              {/* <div
                     className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-200 cursor-pointer group ${
                       uploading
                         ? "border-orange-400 bg-orange-50"
@@ -414,10 +499,10 @@ const [formData, setFormData] = useState({
                           : "Click to upload or drag and drop"}
                       </p>
                     </label>
-                  </div>
+                  </div> */}
 
-                  {/* Photo Preview */}
-                  {formData.photos.length > 0 && (
+              {/* Photo Preview */}
+              {/* {formData.photos.length > 0 && (
                     <div>
                       <p className="text-sm text-slate-600 mb-3">
                         {formData.photos.length} photo(s) uploaded
@@ -443,10 +528,10 @@ const [formData, setFormData] = useState({
                         ))}
                       </div>
                     </div>
-                  )}
+                  )} */}
 
-                  {/* Upload Status */}
-                  {uploading && (
+              {/* Upload Status */}
+              {/* {uploading && (
                     <div className="text-center py-4">
                       <div className="text-orange-600 font-medium">
                         Uploading photos...
@@ -455,10 +540,10 @@ const [formData, setFormData] = useState({
                         <div className="bg-orange-500 h-2 rounded-full animate-pulse w-1/2"></div>
                       </div>
                     </div>
-                  )}
-                </div>
-              </div>
+                  )} */}
+              {/* </div> */}
             </div>
+            {/* </div> */}
 
             {/* Submit */}
             <div className="bg-gradient-to-r from-orange-50 to-orange-100 px-8 py-6 border-t border-orange-200">

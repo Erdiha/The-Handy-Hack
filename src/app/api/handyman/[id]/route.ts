@@ -7,7 +7,8 @@ import {
   handymanServices,
   reviews,
 } from "@/lib/schema";
-import { eq, desc, avg, count } from "drizzle-orm";
+import { eq, desc, avg, count, and } from "drizzle-orm";
+import { jobs } from "@/lib/schema";
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -63,7 +64,9 @@ export async function GET(
       })
       .from(handymanServices)
       .where(eq(handymanServices.handymanId, handymanId));
-
+    // 🔍 DEBUG: Check services query
+    console.log("🔍 Services found:", services);
+    console.log("🔍 Handyman ID:", handymanId);
     // Get review stats
     const reviewStats = await db
       .select({
@@ -94,8 +97,17 @@ export async function GET(
       ? parseFloat(reviewStats[0].avgRating)
       : 0;
     const reviewCount = reviewStats[0]?.reviewCount || 0;
-    const completedJobs = Math.max(reviewCount * 1.5, 5); // Estimate based on reviews
+    // Get real completed jobs count from database
+    const completedJobsResult = await db
+      .select({
+        count: count(jobs.id),
+      })
+      .from(jobs)
+      .where(
+        and(eq(jobs.acceptedBy, handymanId), eq(jobs.status, "completed"))
+      );
 
+    const completedJobs = completedJobsResult[0]?.count || 0;
     // Format reviews
     const formattedReviews = reviewsData.map((review) => ({
       id: review.id,

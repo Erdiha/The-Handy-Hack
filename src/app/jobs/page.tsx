@@ -32,6 +32,12 @@ export default function JobsPage() {
       const response = await fetch(`/api/jobs?${params}`);
       const data = await response.json();
 
+      console.log("🔍 Jobs fetched:", data.jobs?.length, "jobs");
+      console.log(
+        "🔍 Emergency jobs:",
+        data.jobs?.filter((job: Job) => job.urgency === "emergency")
+      );
+
       if (data.success) {
         setJobs(data.jobs);
       }
@@ -232,7 +238,7 @@ export default function JobsPage() {
               </div>
 
               {/* Profile Completion */}
-              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-3xl shadow-lg p-6 text-white">
+              {/* <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-3xl shadow-lg p-6 text-white">
                 <h3 className="text-lg font-bold mb-3">
                   🎯 Boost Your Profile
                 </h3>
@@ -242,7 +248,7 @@ export default function JobsPage() {
                 <Button className="w-full cursor-pointer text-green-600 hover:bg-green-50 hover:text-black font-bold py-3 rounded-xl">
                   Update Profile
                 </Button>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>
@@ -389,13 +395,6 @@ function JobCard({
           <div className="text-sm text-slate-500">Posted by {job.postedBy}</div>
 
           <div className="flex gap-3">
-            <Button
-              variant="outline"
-              className="border-2 border-slate-200 text-slate-700 hover:border-orange-300 hover:text-orange-600 px-4 py-2 rounded-xl"
-            >
-              View Details
-            </Button>
-
             {isOwnJob ? (
               <Button
                 disabled
