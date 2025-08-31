@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useNotifications } from "@/contexts/NotificationContext";
 import type { Notification } from "@/contexts/NotificationContext";
 import Link from "next/link";
+import { NotificationPreferencesModal } from "./modals/NotificationPrefrenceModal";
 
 interface NotificationItemProps {
   notification: Notification;
@@ -17,15 +18,17 @@ export function NotificationButton() {
   const {
     notifications,
     unreadCount,
-
+    unreadMessageCount,
     loading,
     markAsRead,
+    clearAllNotifications,
   } = useNotifications();
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const [showPreferences, setShowPreferences] = useState(false);
 
   // Handle hover open/close with delays
   const handleMouseEnter = () => {
@@ -85,6 +88,14 @@ export function NotificationButton() {
     };
   }, []);
 
+  const handleClearAll = async () => {
+    try {
+      await clearAllNotifications();
+    } catch (error) {
+      alert("Failed to clear notifications");
+    }
+  };
+
   return (
     <div
       ref={containerRef}
@@ -119,14 +130,14 @@ export function NotificationButton() {
 
         {/* Notification Badge */}
         <AnimatePresence>
-          {unreadCount > 0 && !loading && (
+          {unreadMessageCount > 0 && !loading && (
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0 }}
               className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center shadow-sm"
             >
-              {unreadCount > 99 ? "99+" : unreadCount}
+              {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
             </motion.div>
           )}
         </AnimatePresence>
@@ -152,30 +163,70 @@ export function NotificationButton() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
-              className="absolute z-50 bg-white rounded-xl shadow-lg border border-slate-200 right-0 mt-2 w-80 max-md:fixed max-md:top-16 max-md:left-4 max-md:right-4 max-md:w-auto max-md:mx-auto max-md:max-w-sm"
+              style={{
+                position: "absolute",
+                maxHeight: "80vh",
+              }}
+              className="absolute z-50 bg-white rounded-xl shadow-lg border border-slate-200 right-0 mt-2 w-80"
             >
-              {/* Header */}
               <div className="flex items-center justify-between p-4 border-b border-slate-200">
                 <h3 className="font-semibold text-slate-800">Notifications</h3>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="md:hidden p-1 text-slate-400 hover:text-slate-600 rounded"
-                  aria-label="Close notifications"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                <div className="flex items-center gap-2">
+                  {/* Settings Button */}
+                  <button
+                    onClick={() => setShowPreferences(true)}
+                    className="p-1 text-slate-400 hover:text-orange-600 rounded-lg transition-colors"
+                    title="Notification Settings"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                  </button>
+                  {/* Clear All Button */}
+                  {notifications.length > 0 && (
+                    <button
+                      onClick={handleClearAll}
+                      className="text-xs text-slate-500 hover:text-red-600 transition-colors"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsOpen(false)}
+                    className="md:hidden p-1 text-slate-400 hover:text-slate-600 rounded"
+                    aria-label="Close notifications"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               {/* Content */}
@@ -237,6 +288,11 @@ export function NotificationButton() {
           </>
         )}
       </AnimatePresence>
+      {/* Notification Preferences Modal */}
+      <NotificationPreferencesModal
+        isOpen={showPreferences}
+        onClose={() => setShowPreferences(false)}
+      />
     </div>
   );
 }

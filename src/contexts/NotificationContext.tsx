@@ -40,6 +40,7 @@ interface NotificationContextType {
   // Actions
   refreshNotifications: () => Promise<void>;
   markAsRead: (notificationId: string) => Promise<void>;
+  clearAllNotifications: () => Promise<void>; // ← ADD THIS LINE
   setActiveConversation: (conversationId: string | null) => void;
 
   // Loading state
@@ -154,6 +155,25 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Clear all notifications
+  const clearAllNotifications = async () => {
+    try {
+      const response = await fetch("/api/notifications/clear-all", {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        setNotifications([]);
+        setUnreadCount(0);
+        setUnreadMessageCount(0);
+        console.log("🔔 [GLOBAL] Cleared all notifications");
+      }
+    } catch (error) {
+      console.error("Failed to clear all notifications:", error);
+      throw error;
+    }
+  };
+
   // Set active conversation (to suppress notifications)
   const setActiveConversation = (conversationId: string | null) => {
     console.log("🔔 [GLOBAL] Active conversation changed:", conversationId);
@@ -199,22 +219,64 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       console.log("🔔 [GLOBAL] Received notification update:", data);
 
       // Smart suppression: use ref instead of state
-      if (
-        data.conversationId &&
-        data.conversationId === activeConversationRef.current
-      ) {
-        console.log(
-          "🔔 [GLOBAL] Suppressing notification - user is actively viewing conversation:",
-          data.conversationId
-        );
-        return;
-      }
+      // if (
+      //   data.conversationId &&
+      //   data.conversationId === activeConversationRef.current
+      // ) {
+      //   console.log(
+      //     "🔔 [GLOBAL] Suppressing notification - user is actively viewing conversation:",
+      //     data.conversationId
+      //   );
+      //   return;
+      // }
+      console.log("🔔 [GLOBAL] Received notification update:", data);
+      console.log(
+        "🔔 [GLOBAL] Current active conversation:",
+        activeConversationRef.current
+      );
+      console.log("🔔 [GLOBAL] Message conversation:", data.conversationId);
 
       // If user is not viewing this conversation, refresh notifications
       console.log(
         "🔔 [GLOBAL] Processing notification update - refreshing counts"
       );
       refreshNotifications();
+      window.dispatchEvent(
+        new CustomEvent("conversation_list_refresh", {
+          detail: data,
+        })
+      );
+    });
+    // Listen for notification updates globally
+    // socket.on("notification_update", (data) => {
+    //   console.log("🔔 [GLOBAL] Received notification update:", data);
+    //   // ... your existing notification_update code
+    // });
+
+    // ADD THIS NEW HANDLER:
+    socket.on("new_message", (message) => {
+      console.log("📨 [CONTEXT] Received new message:", message);
+
+      // If user is viewing this conversation, mark as read immediately
+      if (
+        message.conversationId &&
+        message.conversationId === activeConversationRef.current
+      ) {
+        console.log(
+          "🔔 [CONTEXT] Auto-marking as read - user viewing conversation"
+        );
+
+        fetch("/api/notifications/mark-conversation-read", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId: message.conversationId }),
+        }).catch(console.error);
+      }
+
+      // Still dispatch to message components
+      window.dispatchEvent(
+        new CustomEvent("socket_new_message", { detail: message })
+      );
     });
 
     socketRef.current = socket;
@@ -238,6 +300,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     unreadMessageCount,
     refreshNotifications,
     markAsRead,
+    clearAllNotifications,
     setActiveConversation,
     loading,
     isConnected,

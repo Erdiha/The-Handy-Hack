@@ -2,10 +2,10 @@
   "name": "neighborhood-handyman",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
-    "dev": "node server.js",
-    "build": "next build", 
-    "start": "node server.js",
+"scripts": {
+    "dev": "tsx server.ts",
+    "build": "next build",
+    "start": "NODE_ENV=production tsx server.ts",
     "lint": "next lint",
     "seed": "tsx scripts/seed-handymen.ts"
   },

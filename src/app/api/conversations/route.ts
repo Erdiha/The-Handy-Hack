@@ -9,7 +9,7 @@ import {
   notifications,
 } from "@/lib/schema";
 import { withAuth, AuthenticatedRequest } from "@/lib/security";
-import { eq, or, and, desc, sql } from "drizzle-orm";
+import { eq, or, and, desc, sql, count, ne } from "drizzle-orm";
 
 declare global {
   var io: import("socket.io").Server | undefined;
@@ -76,6 +76,17 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
           .orderBy(desc(messages.createdAt))
           .limit(1);
 
+        const [unreadCount] = await db
+          .select({ count: count() })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.conversationId, conv.id),
+              eq(messages.isRead, false),
+              ne(messages.senderId, userId) // Don't count your own messages
+            )
+          );
+
         let jobContext = null;
         if (conv.jobId) {
           const [job] = await db
@@ -120,6 +131,7 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
             : null,
           isActive: true,
           jobContext,
+          unreadCount: unreadCount?.count || 0,
         };
       })
     );

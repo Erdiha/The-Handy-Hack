@@ -1,7 +1,7 @@
 // /types/socket.ts - Clean types without 'any'
-import { NextApiResponse } from 'next';
-import { Server as NetServer } from 'http';
-import { Server as ServerIO, Socket } from 'socket.io';
+import { NextApiResponse } from "next";
+import { Server as NetServer } from "http";
+import { Server as ServerIO, Socket } from "socket.io";
 
 // Message interface with tempId properly declared
 export interface SocketMessage {
@@ -12,7 +12,7 @@ export interface SocketMessage {
   content: string;
   timestamp: string;
   isRead: boolean;
-  tempId?: string; // ✅ Properly declared as optional
+  tempId?: string; //
 }
 
 // User online status
@@ -37,7 +37,10 @@ export interface ServerToClientEvents {
   user_offline: (data: { userId: string; timestamp: Date }) => void;
   online_users: (userIds: string[]) => void;
   user_started_typing: (data: TypingIndicator) => void;
-  user_stopped_typing: (data: { userId: string; conversationId: string }) => void;
+  user_stopped_typing: (data: {
+    userId: string;
+    conversationId: string;
+  }) => void;
 }
 
 // Client to Server Events
@@ -62,7 +65,13 @@ export interface SocketData {
 }
 
 // Extended Socket with proper typing
-export interface CustomSocket extends Socket<ClientToServerEvents, ServerToClientEvents, never, SocketData> {
+export interface CustomSocket
+  extends Socket<
+    ClientToServerEvents,
+    ServerToClientEvents,
+    never,
+    SocketData
+  > {
   userId?: string;
   userName?: string;
 }
@@ -71,7 +80,12 @@ export interface CustomSocket extends Socket<ClientToServerEvents, ServerToClien
 export type NextApiResponseServerIO = NextApiResponse & {
   socket: {
     server: NetServer & {
-      io: ServerIO<ClientToServerEvents, ServerToClientEvents, never, SocketData>;
+      io: ServerIO<
+        ClientToServerEvents,
+        ServerToClientEvents,
+        never,
+        SocketData
+      >;
     };
   };
 };

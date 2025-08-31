@@ -415,11 +415,11 @@ function JobCard({
 
                 {/* Respond Button */}
                 <Link
-                  href={`/messages?job=${job.id}&customerId=${
+                  href={`/messages?handyman=${
                     job.customerId
-                  }&customer=${encodeURIComponent(
+                  }&name=${encodeURIComponent(
                     job.postedBy
-                  )}&title=${encodeURIComponent(job.title)}`}
+                  )}&service=${encodeURIComponent(job.title)}&jobId=${job.id}`}
                 >
                   <Button className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-semibold">
                     Respond

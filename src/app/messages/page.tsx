@@ -7,7 +7,59 @@ import { Button } from "@/components/ui/Button";
 import { useRealTimeMessages } from "@/hooks/useRealTimeMessages";
 import { useNotifications } from "@/contexts/NotificationContext";
 
-// ✅ PROPER TYPESCRIPT INTERFACES
+// Online Status Indicator Component
+interface OnlineStatusIndicatorProps {
+  isOnline: boolean;
+  size?: "sm" | "md" | "lg";
+  showText?: boolean;
+  className?: string;
+}
+
+function OnlineStatusIndicator({
+  isOnline,
+  size = "sm",
+  showText = false,
+  className = "",
+}: OnlineStatusIndicatorProps) {
+  const sizeClasses = {
+    sm: "w-2 h-2",
+    md: "w-3 h-3",
+    lg: "w-4 h-4",
+  };
+
+  return (
+    <div className={`flex items-center gap-1 ${className}`}>
+      <div className="relative">
+        <motion.div
+          className={`${sizeClasses[size]} rounded-full ${
+            isOnline ? "bg-green-500" : "bg-gray-400"
+          }`}
+          animate={isOnline ? { scale: [1, 1.2, 1] } : {}}
+          transition={isOnline ? { duration: 2, repeat: Infinity } : {}}
+        />
+        {isOnline && (
+          <motion.div
+            className={`absolute inset-0 ${sizeClasses[size]} rounded-full bg-green-400`}
+            animate={{ scale: [1, 1.5], opacity: [0.7, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity }}
+          />
+        )}
+      </div>
+
+      {showText && (
+        <span
+          className={`text-xs font-medium ${
+            isOnline ? "text-green-600" : "text-gray-500"
+          }`}
+        >
+          {isOnline ? "Online" : "Offline"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// PROPER TYPESCRIPT INTERFACES
 interface Participant {
   id: string;
   name: string;
@@ -35,6 +87,7 @@ interface Conversation {
   lastMessage: LastMessage | null;
   isActive: boolean;
   jobContext?: JobContext;
+  unreadCount: number;
 }
 
 interface Message {
@@ -56,7 +109,7 @@ export default function MessagesPage() {
   const { data: session } = useSession();
   const { refreshNotifications, setActiveConversation } = useNotifications();
 
-  // ✅ CLEAN STATE MANAGEMENT
+  // CLEAN STATE MANAGEMENT
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<
@@ -70,11 +123,61 @@ export default function MessagesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
 
-  // Refs for cleanup
+  // Refs for cleanup and scroll
   const initializedRef = useRef(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const wasOnlineRef = useRef<{ [key: string]: boolean | null }>({});
 
-  // Real-time messaging
+  const forceScrollToBottom = useCallback((smooth = true) => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const smoothScroll = () => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: smooth ? "smooth" : "auto",
+      });
+    };
+
+    // Immediate scroll
+    smoothScroll();
+
+    // Additional attempts for initial load
+    scrollTimeoutRef.current = setTimeout(() => {
+      smoothScroll();
+    }, 0);
+  }, []);
+
+  // Toast notification helper
+  const showStatusToast = useCallback((message: string, isOnline: boolean) => {
+    const toast = document.createElement("div");
+    toast.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-white text-sm font-medium transition-all duration-300 ${
+      isOnline ? "bg-green-500" : "bg-gray-500"
+    }`;
+    toast.style.opacity = "0";
+    toast.textContent = message;
+
+    document.body.appendChild(toast);
+
+    // Fade in
+    setTimeout(() => (toast.style.opacity = "1"), 100);
+
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      setTimeout(() => {
+        if (document.body.contains(toast)) {
+          document.body.removeChild(toast);
+        }
+      }, 300);
+    }, 3000);
+  }, []);
+
   const {
     isConnected,
     onlineUsers,
@@ -87,7 +190,7 @@ export default function MessagesPage() {
   } = useRealTimeMessages({
     conversationId: selectedConversationId,
     onNewMessage: useCallback(
-      (message: Message) => {
+      async (message: Message) => {
         console.log("📨 Received real-time message:", message);
 
         const newMsg: Message = {
@@ -104,17 +207,36 @@ export default function MessagesPage() {
           createdAt: message.createdAt || new Date().toISOString(),
         };
 
+        // Add message to UI
         setMessages((prev) => {
           const exists = prev.some((msg) => msg.id === newMsg.id);
           if (exists) return prev;
-
-          const updated = [...prev, newMsg]; // ✅ Use 'newMsg' with all the proper fields
-          return updated.slice(-50);
+          return [...prev, newMsg].slice(-50);
         });
-        // Update conversation list
+
+        // CRITICAL FIX: If viewing this conversation, mark as read immediately
+        if (message.conversationId === selectedConversationId) {
+          console.log(
+            "🔔 Auto-marking new message as read - user viewing conversation"
+          );
+
+          try {
+            await fetch("/api/notifications/mark-conversation-read", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ conversationId: message.conversationId }),
+            });
+
+            // Refresh notifications after marking as read
+            await refreshNotifications();
+          } catch (error) {
+            console.error("Failed to mark message as read:", error);
+          }
+        }
+
         loadConversations();
       },
-      [selectedConversationId, session?.user?.id]
+      [selectedConversationId, session?.user?.id, refreshNotifications]
     ),
     onMessageEdit: (editData) => {
       setMessages((prev) =>
@@ -131,39 +253,60 @@ export default function MessagesPage() {
     },
   });
 
+  // CONSOLIDATED SCROLL EFFECTS
   useEffect(() => {
-    console.log(
-      "🔄 selectedConversationId changed to:",
-      selectedConversationId
-    );
-  }, [selectedConversationId]);
-
-  useEffect(() => {
-    if (selectedConversationId && window.globalSocket) {
-      // const handleMessageEdit = (editData: {
-      //   messageId: string;
-      //   newContent: string;
-      //   timestamp: string;
-      // }) => {
-      //   setMessages((prev) => {
-      //     // Only update if message exists locally - otherwise ignore silently
-      //     return prev.map((msg) =>
-      //       msg.id === editData.messageId
-      //         ? {
-      //             ...msg,
-      //             content: editData.newContent,
-      //             timestamp: editData.timestamp,
-      //           }
-      //         : msg
-      //     );
-      //   });
-      // };
-      // window.globalSocket.on("message_edited", handleMessageEdit);
-      // return () => {
-      //   window.globalSocket?.off("message_edited", handleMessageEdit);
-      // };
+    if (messages.length > 0 || typingUsers.length > 0) {
+      forceScrollToBottom();
     }
-  }, [selectedConversationId, messages.length]); // Added messages.length to deps
+  }, [messages.length, typingUsers.length, forceScrollToBottom]);
+
+  // Additional scroll for conversation changes
+  useEffect(() => {
+    if (selectedConversationId && messages.length > 0 && !messagesLoading) {
+      // Multiple attempts for initial load with increasing delays
+      setTimeout(() => forceScrollToBottom(false), 0);
+      setTimeout(() => forceScrollToBottom(true), 100);
+      setTimeout(() => forceScrollToBottom(true), 300);
+    }
+  }, [selectedConversationId, messagesLoading, forceScrollToBottom]);
+
+  // Page visibility detection for immediate disconnect
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        console.log("🙈 User went to background");
+      } else {
+        console.log("👀 User came back to foreground");
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      // User is closing the page - disconnect immediately
+      if (window.globalSocket) {
+        window.globalSocket.disconnect();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
+  // CLEAR ACTIVE CONVERSATION WHEN LEAVING MESSAGES PAGE
+  useEffect(() => {
+    return () => {
+      console.log("🧹 Messages page unmounting - clearing active conversation");
+      setActiveConversation(null);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, [setActiveConversation]);
+
   // Check mobile viewport
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -172,45 +315,21 @@ export default function MessagesPage() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Auto-scroll to bottom
-  const scrollToBottom = useCallback(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: "smooth",
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
-
-  // ✅ SIMPLE CONVERSATION LOADING
+  // SIMPLE CONVERSATION LOADING
   const loadConversations = async () => {
-    console.log("📋 Loading conversations...");
-
     try {
       const response = await fetch("/api/conversations");
       const data = await response.json();
 
-      console.log("📋 Conversations API Response:", data);
-
       if (data.success) {
         setConversations(data.conversations);
-        console.log("✅ Loaded conversations:", data.conversations.length);
-      } else {
-        console.error("❌ Conversations API Error:", data.error);
       }
     } catch (error) {
       console.error("❌ Network Error loading conversations:", error);
     }
   };
 
-  // ✅ SIMPLE MESSAGE LOADING
   const loadMessages = async (conversationId: string) => {
-    console.log("💬 Loading messages for conversation:", conversationId);
     setMessagesLoading(true);
 
     try {
@@ -225,64 +344,123 @@ export default function MessagesPage() {
       );
       const data = await response.json();
 
-      console.log("💬 Messages API Response:", data);
-
       if (data.success) {
         setMessages(data.messages);
         setSelectedConversationId(conversationId);
 
-        // Join conversation for real-time updates
+        // Join conversation
         joinConversation(conversationId);
-        setActiveConversation(conversationId);
+        setActiveConversation(String(conversationId));
 
-        console.log("✅ Loaded messages:", data.messages.length);
-
-        // Mark conversation as read
         await fetch("/api/notifications/mark-conversation-read", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conversationId }),
         });
 
-        refreshNotifications();
-      } else {
-        console.error("❌ Messages API Error:", data.error);
+        // NOW refresh notifications to update counts
+        await refreshNotifications();
+
+        await loadConversations();
+
+        console.log(
+          "✅ Conversation opened and marked as read:",
+          conversationId
+        );
       }
     } catch (error) {
-      console.error("❌ Network Error loading messages:", error);
+      console.error("❌ Error loading messages:", error);
     } finally {
       setMessagesLoading(false);
     }
   };
 
-  // ✅ SIMPLE URL PARAMETER HANDLING
-  const handleContactNowFlow = async () => {
-    console.log("🔗 === CONTACT NOW FLOW STARTED ===");
+  // Handle conversation refresh from notifications
+  useEffect(() => {
+    const handleConversationRefresh = () => {
+      console.log("🔄 Refreshing conversations due to notification update");
+      loadConversations();
+    };
 
+    window.addEventListener(
+      "conversation_list_refresh",
+      handleConversationRefresh
+    );
+    return () => {
+      window.removeEventListener(
+        "conversation_list_refresh",
+        handleConversationRefresh
+      );
+    };
+  }, []);
+
+  // SINGLE NEW MESSAGE HANDLER (removed duplicate)
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const socket = window.globalSocket;
+    if (!socket) return;
+
+    const handleNewMessage = (message: Message) => {
+      console.log("New message received:", message.conversationId);
+      console.log("Currently viewing:", selectedConversationId);
+
+      // If no conversation is selected OR viewing different conversation, refresh list
+      if (
+        !selectedConversationId ||
+        message.conversationId !== selectedConversationId
+      ) {
+        console.log("Refreshing conversation list for unread indicator");
+        loadConversations();
+      }
+    };
+
+    socket.on("new_message", handleNewMessage);
+
+    return () => {
+      socket.off("new_message", handleNewMessage);
+    };
+  }, [selectedConversationId, session?.user?.id]);
+
+  // Online status change notifications
+  useEffect(() => {
+    conversations.forEach((conversation) => {
+      const otherPerson = conversation.participants.find(
+        (p) => p.id !== session?.user?.id
+      );
+
+      if (!otherPerson?.id) return;
+
+      const isCurrentlyOnline = onlineUsers.includes(otherPerson.id);
+      const wasOnline = wasOnlineRef.current[otherPerson.id];
+
+      // Only show notification after initial load and when status actually changes
+      if (wasOnline !== null && wasOnline !== isCurrentlyOnline) {
+        const message = isCurrentlyOnline
+          ? `${otherPerson.name} is now online`
+          : `${otherPerson.name} went offline`;
+
+        showStatusToast(message, isCurrentlyOnline);
+      }
+
+      wasOnlineRef.current[otherPerson.id] = isCurrentlyOnline;
+    });
+  }, [onlineUsers, conversations, session?.user?.id, showStatusToast]);
+
+  // URL PARAMETER HANDLING
+  const handleContactNowFlow = async () => {
     const params = new URLSearchParams(window.location.search);
     const handymanId = params.get("handyman");
     const handymanName = params.get("name");
     const service = params.get("service");
 
-    console.log("🔗 URL Parameters:", { handymanId, handymanName, service });
-
-    // Only process if we have handyman parameters
-    if (!handymanId || !handymanName) {
-      console.log("⚠️ No handyman parameters found - normal page load");
-      return false;
-    }
-
-    console.log("💬 Contact Now flow detected");
+    if (!handymanId || !handymanName) return false;
 
     try {
-      // Create initial message
       const initialMessage = `Hi ${handymanName}! I'd like to discuss a ${
         service || "project"
       } and get a quote.`;
-      console.log("📝 Initial message:", initialMessage);
 
-      // Step 1: Create/find conversation
-      console.log("📞 Step 1: Creating conversation...");
       const response = await fetch("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -294,123 +472,41 @@ export default function MessagesPage() {
       });
 
       const data = await response.json();
-      console.log("📞 Conversation API response:", data);
+      if (!data.success) return false;
 
-      if (!data.success) {
-        console.error("❌ Failed to create conversation:", data.error);
-        return false;
-      }
-
-      const conversationId = data.conversationId;
-      console.log("✅ Got conversation ID:", conversationId);
-
-      // Step 2: Load conversations (this will include the new/updated one)
-      console.log("📋 Step 2: Loading conversations...");
       await loadConversations();
-      console.log("✅ Conversations loaded");
-
-      // Step 3: Open the specific conversation
-      console.log("💬 Step 3: Opening conversation...");
-      await loadMessages(conversationId);
-      console.log("✅ Messages loaded");
-
-      // Step 4: Clean up URL (remove parameters)
-      console.log("🧹 Step 4: Cleaning URL...");
+      await loadMessages(data.conversationId);
       window.history.replaceState({}, "", "/messages");
-      console.log("✅ URL cleaned");
 
-      console.log("🎉 === CONTACT NOW FLOW COMPLETED ===");
       return true;
     } catch (error) {
       console.error("💥 Error in Contact Now flow:", error);
       return false;
     }
   };
-  // ✅ SIMPLE URL PARAMETER HANDLING
-  const handleURLParameters = async () => {
-    const params = new URLSearchParams(window.location.search);
-    const handymanId = params.get("handyman");
-    const handymanName = params.get("name");
-    const service = params.get("service");
 
-    console.log("🔗 URL Parameters:", { handymanId, handymanName, service });
-
-    if (handymanId && handymanName) {
-      console.log("💬 Contact Now flow detected");
-
-      const initialMessage = `Hi ${handymanName}! I'd like to discuss a ${
-        service || "project"
-      } and get a quote.`;
-
-      try {
-        console.log("📞 Creating conversation...");
-        const response = await fetch("/api/conversations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            otherUserId: handymanId,
-            initialMessage,
-            serviceContext: service,
-          }),
-        });
-
-        const data = await response.json();
-        console.log("📞 Conversation creation response:", data);
-
-        if (data.success) {
-          console.log("✅ Conversation created/found:", data.conversationId);
-
-          // Load conversations first
-          await loadConversations();
-
-          // Then open the specific conversation
-          await loadMessages(data.conversationId);
-
-          console.log("✅ Contact Now flow completed");
-
-          // Clean URL
-          window.history.replaceState({}, "", "/messages");
-        } else {
-          console.error("❌ Failed to create conversation:", data);
-        }
-      } catch (error) {
-        console.error("❌ Error in Contact Now flow:", error);
-      }
-    }
-  };
-
-  // ✅ UPDATED INITIALIZATION - Replace your existing useEffect
+  // INITIALIZATION
   useEffect(() => {
     const initialize = async () => {
       if (initializedRef.current || !session?.user?.id) return;
       initializedRef.current = true;
 
-      console.log("🚀 Initializing Messages Page...");
-
-      // Check if coming from "Contact Now" URL
       const hasHandymanParams = window.location.search.includes("handyman");
 
       if (hasHandymanParams) {
-        console.log("🔗 Contact Now flow detected");
         const success = await handleContactNowFlow();
-        if (!success) {
-          // Fallback to normal loading if Contact Now fails
-          console.log("⚠️ Contact Now failed, loading conversations normally");
-          await loadConversations();
-        }
+        if (!success) await loadConversations();
       } else {
-        console.log("📋 Normal page load");
         await loadConversations();
       }
 
       setLoading(false);
-      console.log("✅ Messages Page initialized");
     };
 
     initialize();
   }, [session?.user?.id]);
 
-  // ✅ SIMPLE MESSAGE SENDING
+  // MESSAGE SENDING
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedConversationId || sending) return;
 
@@ -419,10 +515,9 @@ export default function MessagesPage() {
     setNewMessage("");
 
     try {
-      // Stop typing indicator
       stopTyping(selectedConversationId);
 
-      // Create optimistic message
+      // Optimistic message
       const tempId = `temp-${Date.now()}`;
       const optimisticMessage: Message = {
         id: tempId,
@@ -458,7 +553,7 @@ export default function MessagesPage() {
       const data = await response.json();
 
       if (data.success) {
-        // Replace optimistic message with real one
+        // Replace optimistic with real
         setMessages((prev) =>
           prev.map((msg) =>
             msg.tempId === tempId
@@ -474,18 +569,12 @@ export default function MessagesPage() {
           )
         );
 
-        // Send via socket for real-time
+        // Socket broadcast
         socketSendMessage(selectedConversationId, messageContent);
-
-        // Refresh conversation list
         loadConversations();
-
-        console.log("✅ Message sent successfully");
       } else {
-        // Remove optimistic message on failure
         setMessages((prev) => prev.filter((msg) => msg.tempId !== tempId));
         setNewMessage(messageContent);
-        console.error("❌ Failed to send message:", data.error);
       }
     } catch (error) {
       console.error("❌ Error sending message:", error);
@@ -495,16 +584,12 @@ export default function MessagesPage() {
     setSending(false);
   };
 
-  // ✅ SIMPLE DELETE CONVERSATION
+  // DELETE CONVERSATION
   const deleteConversation = async (conversationId: string) => {
-    const confirmMessage =
-      "Delete this conversation? This action cannot be undone.";
-
-    if (!confirm(confirmMessage)) return;
+    if (!confirm("Delete this conversation? This action cannot be undone."))
+      return;
 
     try {
-      console.log("🗑️ Deleting conversation:", conversationId);
-
       const response = await fetch(
         `/api/conversations?conversationId=${conversationId}`,
         {
@@ -515,44 +600,33 @@ export default function MessagesPage() {
       const data = await response.json();
 
       if (data.success) {
-        console.log("✅ Conversation deleted:", data.message);
-
-        // Remove from conversations list
         setConversations((prev) =>
           prev.filter((conv) => conv.id !== conversationId)
         );
 
-        // If this was selected conversation, clear it
         if (selectedConversationId === conversationId) {
           setSelectedConversationId(null);
           setMessages([]);
+          setActiveConversation(null);
         }
       } else {
-        console.error("❌ Delete failed:", data.error);
         alert("Failed to delete conversation: " + data.error);
       }
     } catch (error) {
-      console.error("❌ Delete error:", error);
       alert("Failed to delete conversation");
     }
   };
 
-  // ✅ EDIT MESSAGE HELPERS
+  // EDIT HELPERS
   const canEditMessage = (message: Message): boolean => {
-    // Only sender can edit
     if (message.senderId !== session?.user?.id) return false;
-
-    // Always allow editing optimistic messages
     if (message.isOptimistic) return true;
 
-    // Check 1-hour time limit
     if (message.createdAt) {
       const messageAge =
         new Date().getTime() - new Date(message.createdAt).getTime();
-      const oneHour = 60 * 60 * 1000;
-      return messageAge <= oneHour;
+      return messageAge <= 60 * 60 * 1000; // 1 hour
     }
-
     return false;
   };
 
@@ -562,8 +636,6 @@ export default function MessagesPage() {
   };
 
   const cancelEdit = () => {
-    console.log("🚫 cancelEdit called - this might trigger conversation reset");
-
     setEditingId(null);
     setEditContent("");
   };
@@ -571,7 +643,6 @@ export default function MessagesPage() {
   const saveEdit = async () => {
     if (!editingId || !editContent.trim()) return;
 
-    // Optimistically update UI immediately
     setMessages((prev) =>
       prev.map((msg) =>
         msg.id === editingId
@@ -588,12 +659,10 @@ export default function MessagesPage() {
       )
     );
 
-    // Close edit mode immediately
     cancelEdit();
 
     try {
-      // Save to database
-      const response = await fetch("/api/messages", {
+      await fetch("/api/messages", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -601,20 +670,12 @@ export default function MessagesPage() {
           content: editContent.trim(),
         }),
       });
-
-      const data = await response.json();
-
-      if (data.success) {
-        console.log("✅ Edit saved to database");
-        // Sender already sees edit via optimistic update above
-        // Recipient will get it via socket or next reload
-      }
     } catch (error) {
       console.error("❌ Edit failed:", error);
-      // Could revert optimistic update here if needed
     }
   };
-  // Handle typing
+
+  // TYPING
   const handleInputChange = (value: string) => {
     setNewMessage(value);
     if (selectedConversationId && isConnected) {
@@ -632,55 +693,41 @@ export default function MessagesPage() {
       sendMessage();
     }
   };
-  const deleteMessage = async (message: Message) => {
-    const confirmMessage = `Delete this message? This action cannot be undone.`;
 
-    if (!confirm(confirmMessage)) return;
+  // DELETE MESSAGE
+  const deleteMessage = async (message: Message) => {
+    if (!confirm("Delete this message? This action cannot be undone.")) return;
 
     try {
-      console.log("🗑️ Deleting message:", message.id);
-
-      // Optimistically remove from UI
       setMessages((prev) => prev.filter((msg) => msg.id !== message.id));
 
-      // Delete from API
-      const response = await fetch(`/api/messages?messageId=${message.id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deleteType: "everyone" }),
-      });
+      const response = await fetch(
+        `/api/messages?messageId=${message.id}&deleteType=everyone`,
+        { method: "DELETE", headers: { "Content-Type": "application/json" } }
+      );
 
       const data = await response.json();
 
-      if (data.success) {
-        console.log("✅ Message deleted successfully");
-        // Already removed optimistically above
-      } else {
-        console.error("❌ Delete failed:", data.error);
+      if (!data.success) {
         alert("Failed to delete message: " + data.error);
-        // Revert optimistic delete by reloading messages
         if (selectedConversationId) {
           loadMessages(selectedConversationId);
         }
       }
     } catch (error) {
-      console.error("❌ Delete error:", error);
       alert("Failed to delete message");
-      // Revert optimistic delete by reloading messages
       if (selectedConversationId) {
         loadMessages(selectedConversationId);
       }
     }
   };
 
-  // Get current typing users
   const currentTypingUsers = typingUsers.filter(
     (user) =>
       user.conversationId === selectedConversationId &&
       user.userId !== session?.user?.id
   );
 
-  // Get selected conversation and other participant
   const selectedConversation = conversations.find(
     (c) => c.id === selectedConversationId
   );
@@ -688,7 +735,6 @@ export default function MessagesPage() {
     (p) => p.id !== session?.user?.id
   );
 
-  // Loading screen
   if (loading) {
     return (
       <div className="min-h-[calc(100vh-5rem)] bg-gradient-to-br from-orange-50 to-orange-100 flex items-center justify-center">
@@ -718,7 +764,6 @@ export default function MessagesPage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
           >
-            {/* Header */}
             <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-4 lg:p-6 text-white">
               <div className="flex items-center justify-between">
                 <div>
@@ -742,7 +787,6 @@ export default function MessagesPage() {
               </div>
             </div>
 
-            {/* Conversations */}
             <div className="overflow-y-auto h-full">
               {conversations.length === 0 ? (
                 <motion.div
@@ -777,7 +821,6 @@ export default function MessagesPage() {
                         key={conversation.id}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, x: -100 }}
                         transition={{
                           delay: Math.min(index * 0.05, 0.3),
                           duration: 0.3,
@@ -794,9 +837,7 @@ export default function MessagesPage() {
                             : "bg-white hover:bg-slate-25 border-slate-100 hover:border-slate-200 hover:shadow-sm"
                         }`}
                       >
-                        {/* Main Content */}
                         <div className="flex space-x-3">
-                          {/* Avatar */}
                           <div className="relative flex-shrink-0">
                             <div
                               className={`w-11 h-11 rounded-lg flex items-center justify-center shadow-sm ${
@@ -813,24 +854,29 @@ export default function MessagesPage() {
                               </span>
                             </div>
 
-                            {/* Online Indicator */}
-                            {isOnline && (
-                              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full" />
-                            )}
+                            {/* Enhanced online indicator */}
+                            <div className="absolute -bottom-1 -right-1">
+                              <OnlineStatusIndicator
+                                isOnline={isOnline}
+                                size="md"
+                              />
+                            </div>
                           </div>
 
-                          {/* Content */}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center justify-between mb-1 relative">
                               <h3 className="font-semibold text-sm truncate text-slate-800">
                                 {otherPerson?.name}
                                 <span className="text-xs text-slate-400 capitalize italic font-normal ml-1">
                                   - {otherPerson?.role}
                                 </span>
                               </h3>
-                            </div>
 
-                            {/* Conversation Type Label */}
+                              {/* Simple red dot indicator */}
+                              {conversation.unreadCount > 0 && (
+                                <div className="w-3 h-3 absolute -top-[20px] -right-[20px] bg-red-500 rounded-full"></div>
+                              )}
+                            </div>
                             <div className="mb-2">
                               <span
                                 className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
@@ -848,7 +894,6 @@ export default function MessagesPage() {
                               </span>
                             </div>
 
-                            {/* Last Message */}
                             <p className="text-sm text-slate-600">
                               {conversation.lastMessage?.content ? (
                                 conversation.lastMessage.content.length > 50 ? (
@@ -869,7 +914,7 @@ export default function MessagesPage() {
                         </div>
                         <button
                           onClick={(e) => {
-                            e.stopPropagation(); // Prevent opening conversation
+                            e.stopPropagation();
                             deleteConversation(conversation.id);
                           }}
                           className="absolute top-2 right-2 cursor-pointer p-1.5 text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all duration-200 rounded-lg hover:bg-red-50"
@@ -913,7 +958,10 @@ export default function MessagesPage() {
                   <div className="flex items-center space-x-4">
                     {isMobile && (
                       <button
-                        onClick={() => setSelectedConversationId(null)}
+                        onClick={() => {
+                          setSelectedConversationId(null);
+                          setActiveConversation(null);
+                        }}
                         className="p-1 text-slate-600 hover:text-slate-800"
                       >
                         <svg
@@ -942,24 +990,36 @@ export default function MessagesPage() {
                         </span>
                       </div>
                       {onlineUsers.includes(otherParticipant?.id || "") && (
-                        <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+                        <div className="absolute bottom-0 right-0">
+                          <OnlineStatusIndicator isOnline={true} size="sm" />
+                        </div>
                       )}
                     </div>
 
                     <div>
-                      <h2 className="text-lg font-semibold text-slate-900">
+                      <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                         {otherParticipant?.name}
+                        <OnlineStatusIndicator
+                          isOnline={onlineUsers.includes(
+                            otherParticipant?.id || ""
+                          )}
+                          size="md"
+                        />
                       </h2>
                       <div className="flex items-center space-x-2 text-sm text-slate-500">
                         <span className="capitalize">
                           {otherParticipant?.role}
                         </span>
-                        {onlineUsers.includes(otherParticipant?.id || "") && (
-                          <>
-                            <span>•</span>
-                            <span className="text-green-600">Online</span>
-                          </>
-                        )}
+
+                        <span>•</span>
+                        <OnlineStatusIndicator
+                          isOnline={onlineUsers.includes(
+                            otherParticipant?.id || ""
+                          )}
+                          showText={true}
+                          size="sm"
+                        />
+
                         {currentTypingUsers.length > 0 && (
                           <>
                             <span>•</span>
@@ -970,7 +1030,6 @@ export default function MessagesPage() {
                     </div>
                   </div>
 
-                  {/* Job Context */}
                   {selectedConversation?.jobContext && (
                     <div className="mt-3 px-3 py-2 bg-blue-50 rounded-lg border-l-3 border-blue-500">
                       <p className="text-sm text-blue-700 font-medium">
@@ -980,7 +1039,7 @@ export default function MessagesPage() {
                   )}
                 </div>
 
-                {/* Messages Area */}
+                {/* Messages Area - CRITICAL: Fixed container for scroll */}
                 <div
                   ref={messagesContainerRef}
                   className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-3 lg:space-y-4 bg-gradient-to-b from-orange-25 to-white"
@@ -999,16 +1058,10 @@ export default function MessagesPage() {
                       <p className="text-slate-600">Start the conversation!</p>
                     </div>
                   ) : (
-                    messages.map((message) => {
+                    messages.map((message, index) => {
                       const isOwn = message.senderId === session?.user?.id;
                       const isEditing = editingId === message.id;
                       const canEdit = canEditMessage(message);
-                      console.log(
-                        "🎨 Rendering message:",
-                        message.id,
-                        "content:",
-                        message.content.substring(0, 20)
-                      );
 
                       return (
                         <motion.div
@@ -1033,7 +1086,6 @@ export default function MessagesPage() {
                             }`}
                           >
                             {isEditing ? (
-                              /* ✅ EDIT MODE UI */
                               <div className="space-y-2">
                                 <textarea
                                   value={editContent}
@@ -1069,7 +1121,6 @@ export default function MessagesPage() {
                                 </div>
                               </div>
                             ) : (
-                              /* ✅ NORMAL MESSAGE UI */
                               <>
                                 <p className="text-sm lg:text-base leading-relaxed break-words">
                                   {message.content}
@@ -1091,8 +1142,6 @@ export default function MessagesPage() {
                                   )}
                                 </div>
 
-                                {/* ✅ EDIT BUTTON (shows on hover for own messages) */}
-                                {/* ✅ EDIT & DELETE BUTTONS */}
                                 {isOwn && (canEdit || message.canDelete) && (
                                   <div className="absolute -top-8 -right-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
                                     <div className="flex gap-1 bg-white rounded-lg shadow-lg border p-1">
@@ -1196,7 +1245,6 @@ export default function MessagesPage() {
                 </div>
               </>
             ) : (
-              // Empty State
               <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-orange-25 to-white">
                 <div className="text-center">
                   <div className="text-6xl lg:text-8xl mb-6">💬</div>

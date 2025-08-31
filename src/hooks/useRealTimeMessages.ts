@@ -10,6 +10,12 @@ declare global {
     globalSocket?: Socket;
   }
 }
+interface NotificationUpdateData {
+  conversationId?: string;
+  type?: string;
+  fromUserId?: string;
+  fromUserName?: string;
+}
 
 interface SocketMessage {
   id: string;
@@ -96,6 +102,30 @@ export const useRealTimeMessages = ({
     return window.globalSocket || null;
   }, []);
 
+  // In your useRealTimeMessages hook, fix this useEffect:
+  useEffect(() => {
+    if (!enabled || !session?.user) return;
+
+    const socket = getGlobalSocket(); // Get the socket first
+    if (!socket) return;
+
+    // Don't interfere with global notification events
+    const handleGlobalNotificationUpdate = (data: NotificationUpdateData) => {
+      // If this notification is for a different conversation, let it pass to NotificationContext
+      if (data.conversationId && data.conversationId !== conversationId) {
+        // Dispatch it manually since the global handler might be blocked
+        window.dispatchEvent(
+          new CustomEvent("conversation_list_refresh", { detail: data })
+        );
+      }
+    };
+
+    socket.on("notification_update", handleGlobalNotificationUpdate);
+
+    return () => {
+      socket.off("notification_update", handleGlobalNotificationUpdate);
+    };
+  }, [conversationId, enabled, session?.user?.id, getGlobalSocket]);
   // Set up message event listeners when conversation changes
   useEffect(() => {
     if (!enabled || !session?.user || !conversationId) return;
@@ -114,9 +144,17 @@ export const useRealTimeMessages = ({
     // Set active conversation for notification suppression
     setActiveConversationRef.current?.(conversationId);
 
-    // Handle new messages
+    // In the handleNewMessage function, add this:
     const handleNewMessage = (socketMessage: SocketMessage): void => {
       console.log("📨 [MESSAGES] Received new message:", socketMessage);
+
+      // ALWAYS refresh conversation list when any message arrives
+      window.dispatchEvent(
+        new CustomEvent("conversation_list_refresh", {
+          detail: { conversationId: socketMessage.conversationId },
+        })
+      );
+
       if (
         onNewMessageRef.current &&
         socketMessage.conversationId === conversationId
@@ -133,7 +171,6 @@ export const useRealTimeMessages = ({
         onNewMessageRef.current(message);
       }
     };
-
     // Handle online users
     const handleOnlineUsers = (userIds: string[]): void => {
       setOnlineUsers(userIds);

@@ -7,18 +7,26 @@ import {
   handymanServices,
   reviews,
 } from "@/lib/schema";
-import { eq, avg, count } from "drizzle-orm";
+import { eq, desc, avg, count, gte, lte, and, or } from "drizzle-orm";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const service = searchParams.get("service");
     const availableOnly = searchParams.get("availableOnly") === "true";
+    const priceRange = searchParams.get("priceRange");
+    const rating = searchParams.get("rating");
+    const neighborhood = searchParams.get("neighborhood");
 
-    console.log("Fetching handymen with filters:", { service, availableOnly });
+    console.log("Fetching handymen with filters:", {
+      service,
+      availableOnly,
+      priceRange,
+      rating,
+    });
 
-    // Get handymen with their profiles and neighborhoods
-    const handymenData = await db
+    // Get handymen with profiles
+    const handymenQuery = db
       .select({
         id: users.id,
         name: users.name,
@@ -27,8 +35,9 @@ export async function GET(request: Request) {
         bio: handymanProfiles.bio,
         hourlyRate: handymanProfiles.hourlyRate,
         isVerified: handymanProfiles.isVerified,
-        isAvailable: handymanProfiles.isAvailable, // ADD THIS LINE
+        isAvailable: handymanProfiles.isAvailable,
         neighborhoodName: neighborhoods.name,
+        createdAt: users.createdAt,
       })
       .from(users)
       .innerJoin(handymanProfiles, eq(users.id, handymanProfiles.userId))
@@ -38,18 +47,41 @@ export async function GET(request: Request) {
       )
       .where(eq(users.role, "handyman"));
 
-    if (handymenData.length === 0) {
-      return NextResponse.json({
-        success: true,
-        handymen: [],
-        total: 0,
-        message: "No handymen found. Have you run the seed script?",
+    let handymen = await handymenQuery;
+
+    // Apply availability filter
+    if (availableOnly) {
+      handymen = handymen.filter((h) => h.isAvailable);
+    }
+
+    // Apply neighborhood filter
+    if (neighborhood && neighborhood !== "All Areas") {
+      handymen = handymen.filter(
+        (handyman) => handyman.neighborhoodName === neighborhood
+      );
+    }
+    // Apply price range filter
+    if (priceRange && priceRange !== "All Prices") {
+      handymen = handymen.filter((handyman) => {
+        const rate = parseFloat(handyman.hourlyRate || "0");
+        switch (priceRange) {
+          case "under-50":
+            return rate < 50;
+          case "50-80":
+            return rate >= 50 && rate <= 80;
+          case "80-120":
+            return rate >= 80 && rate <= 120;
+          case "over-120":
+            return rate > 120;
+          default:
+            return true;
+        }
       });
     }
 
     // Get services and reviews for each handyman
-    const enrichedHandymen = await Promise.all(
-      handymenData.map(async (handyman) => {
+    const transformedHandymen = await Promise.all(
+      handymen.map(async (handyman) => {
         // Get services
         const services = await db
           .select({
@@ -69,45 +101,38 @@ export async function GET(request: Request) {
 
         const rating = reviewStats[0]?.avgRating
           ? parseFloat(reviewStats[0].avgRating)
-          : 4.5;
+          : 0;
         const reviewCount = reviewStats[0]?.reviewCount || 0;
 
         return {
           id: handyman.id.toString(),
           name: handyman.name,
-          bio:
-            handyman.bio ||
-            "Experienced local handyman ready to help with your projects.",
+          bio: handyman.bio || "Experienced local handyman",
+          hourlyRate: handyman.hourlyRate || "50",
+          neighborhood: handyman.neighborhoodName || "Local Area",
+          isAvailable: handyman.isAvailable || false,
           services: services.map((s) => s.serviceName),
-          hourlyRate: parseFloat(handyman.hourlyRate || "50"),
           rating: Math.round(rating * 10) / 10,
           reviewCount,
-          distance: 0.5 + Math.random() * 3,
-          neighborhood: handyman.neighborhoodName || "Local Area",
-          responseTime: ["15 minutes", "30 minutes", "1 hour"][
-            Math.floor(Math.random() * 3)
-          ],
-          isAvailable: handyman.isAvailable, // CHANGED: use real data
+          distance: Math.random() * 10 + 1, // Mock distance for now
+          responseTime: "15 minutes", // Mock response time
         };
       })
     );
 
-    // Apply filters
-    let filteredHandymen = enrichedHandymen;
-
+    // Apply service filter
+    let filteredHandymen = transformedHandymen;
     if (service && service !== "All Services") {
-      filteredHandymen = filteredHandymen.filter((handyman) =>
-        handyman.services.some(
-          (s) =>
-            s.toLowerCase().includes(service.toLowerCase()) ||
-            service.toLowerCase().includes(s.toLowerCase())
-        )
+      filteredHandymen = transformedHandymen.filter((handyman) =>
+        handyman.services.includes(service)
       );
     }
 
-    if (availableOnly) {
+    // Apply rating filter
+    if (rating && rating !== "All Ratings") {
+      const minRating = parseFloat(rating);
       filteredHandymen = filteredHandymen.filter(
-        (handyman) => handyman.isAvailable
+        (handyman) => handyman.rating >= minRating
       );
     }
 
@@ -116,15 +141,11 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       handymen: filteredHandymen,
-      total: filteredHandymen.length,
     });
   } catch (error) {
     console.error("Error fetching handymen:", error);
     return NextResponse.json(
-      {
-        error: "Failed to fetch handymen",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Failed to fetch handymen" },
       { status: 500 }
     );
   }

@@ -355,8 +355,7 @@ export const DELETE = withAuth(async (request: AuthenticatedRequest) => {
       );
     }
 
-    const body = await request.json();
-    const { deleteType } = body; // 'me' or 'everyone'
+    const deleteType = searchParams.get("deleteType") || "me";
 
     const userId = parseInt(request.user!.id);
     const msgId = parseInt(messageId);

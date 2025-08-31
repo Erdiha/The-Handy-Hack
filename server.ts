@@ -1,40 +1,82 @@
-// server.js - Bug-Free Socket.io Implementation
+// server.ts - Bug-Free Socket.io Implementation with TypeScript
 import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
-import { Server } from "socket.io";
+import { Server, Socket } from "socket.io";
+
+// Type definitions
+interface ConnectedUser {
+  socketId: string;
+  userName: string;
+  timestamp: Date;
+}
+
+interface UserSocket {
+  userId: string;
+  userName: string;
+}
+
+interface MessageData {
+  conversationId: string;
+  content: string;
+  tempId?: string;
+  senderName: string;
+}
+
+interface TypingData {
+  conversationId: string;
+}
+
+interface AuthData {
+  userId: string;
+  userName: string;
+}
+
+// Extend Socket interface
+declare module "socket.io" {
+  interface Socket {
+    userId?: string;
+    userName?: string;
+  }
+}
+
+// Global io declaration
+declare global {
+  var io: Server | undefined;
+}
 
 const dev = process.env.NODE_ENV !== "production";
-const hostname = "0.0.0.0";
-const port = process.env.PORT || 3000;
+const hostname =
+  process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost";
+const port = parseInt(process.env.PORT || "3000", 10);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 // Track connected users and their socket IDs
-const connectedUsers = new Map(); // userId -> { socketId, userName, timestamp }
-const userSockets = new Map(); // socketId -> { userId, userName }
-const conversationTyping = new Map(); // conversationId -> Set<{ userId, userName }>
+const connectedUsers = new Map<string, ConnectedUser>(); // userId -> ConnectedUser
+const userSockets = new Map<string, UserSocket>(); // socketId -> UserSocket
+const conversationTyping = new Map<string, Set<string>>(); // conversationId -> Set<userId>
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
-    const parsedUrl = parse(req.url, true);
+    const parsedUrl = parse(req.url || "/", true);
     await handle(req, res, parsedUrl);
   });
 
-  // Initialize Socket.io with proper configuration
+  // In server.js, find this section:
   const io = new Server(server, {
     cors: {
       origin: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
       methods: ["GET", "POST"],
     },
-    pingTimeout: 60000,
-    pingInterval: 25000,
+    //  faster disconnect detection:
+    pingTimeout: 10000, // 10 seconds instead of default 60s
+    pingInterval: 5000, // Check every 5 seconds
   });
-
   global.io = io;
 
-  io.on("connection", (socket) => {
+  io.on("connection", (socket: Socket) => {
     console.log(`🔌 User connected: ${socket.id}`);
 
     // === USER AUTHENTICATION & ROOM JOINING ===
@@ -49,29 +91,33 @@ app.prepare().then(() => {
 
         const { userId, userName } = data;
 
-        // Store user mapping
-        socket.userId = userId;
-        socket.userName = userName;
-        userSockets.set(socket.id, { userId, userName });
+        // Type-safe assignment
+        socket.userId = String(userId); // Ensure it's a string
+        socket.userName = String(userName);
+
+        userSockets.set(socket.id, {
+          userId: String(userId),
+          userName: String(userName),
+        });
 
         // Join user-specific room for notifications
         const userRoom = `user-${userId}`;
         socket.join(userRoom);
 
         // Update connected users tracking
-        connectedUsers.set(userId, {
+        connectedUsers.set(String(userId), {
           socketId: socket.id,
-          userName: userName,
+          userName: String(userName),
           timestamp: new Date(),
         });
 
         console.log(`✅ User authenticated: ${userName} (${userId})`);
-        console.log(`📍 Joined user room: ${userRoom}`);
+        console.log(`🏠 Joined user room: ${userRoom}`);
 
         // Broadcast user online status
         socket.broadcast.emit("user_online", {
-          userId: userId,
-          userName: userName,
+          userId: String(userId),
+          userName: String(userName),
           timestamp: new Date(),
         });
 
@@ -83,10 +129,16 @@ app.prepare().then(() => {
     });
 
     // === CONVERSATION ROOM MANAGEMENT ===
-    socket.on("join_conversation", (conversationId) => {
+    socket.on("join_conversation", (conversationId: string) => {
       try {
         if (!socket.userId) {
           console.error("❌ User not authenticated, cannot join conversation");
+          socket.emit("error", { message: "Authentication required" });
+          return;
+        }
+
+        if (!conversationId) {
+          console.error("❌ No conversation ID provided");
           return;
         }
 
@@ -98,22 +150,23 @@ app.prepare().then(() => {
         );
 
         // Clear any typing indicators for this user in this conversation
-        const typingKey = `${conversationId}`;
-        if (conversationTyping.has(typingKey)) {
-          const typingSet = conversationTyping.get(typingKey);
+        const typingSet = conversationTyping.get(conversationId);
+        if (typingSet) {
           typingSet.delete(socket.userId);
           if (typingSet.size === 0) {
-            conversationTyping.delete(typingKey);
+            conversationTyping.delete(conversationId);
           }
         }
+
+        socket.emit("conversation_joined", { conversationId });
       } catch (error) {
         console.error("💥 Join conversation error:", error);
       }
     });
 
-    socket.on("leave_conversation", (conversationId) => {
+    socket.on("leave_conversation", (conversationId: string) => {
       try {
-        if (!socket.userId) return;
+        if (!socket.userId || !conversationId) return;
 
         const conversationRoom = `conversation-${conversationId}`;
         socket.leave(conversationRoom);
@@ -123,9 +176,8 @@ app.prepare().then(() => {
         );
 
         // Clear typing indicators
-        const typingKey = `${conversationId}`;
-        if (conversationTyping.has(typingKey)) {
-          const typingSet = conversationTyping.get(typingKey);
+        const typingSet = conversationTyping.get(conversationId);
+        if (typingSet) {
           typingSet.delete(socket.userId);
 
           // Broadcast typing update
@@ -135,19 +187,22 @@ app.prepare().then(() => {
           });
 
           if (typingSet.size === 0) {
-            conversationTyping.delete(typingKey);
+            conversationTyping.delete(conversationId);
           }
         }
+
+        socket.emit("conversation_left", { conversationId });
       } catch (error) {
         console.error("💥 Leave conversation error:", error);
       }
     });
 
     // === MESSAGE HANDLING ===
-    socket.on("send_message", (data) => {
+    socket.on("send_message", (data: MessageData) => {
       try {
         if (!socket.userId || !socket.userName) {
           console.error("❌ Unauthenticated message attempt");
+          socket.emit("error", { message: "Authentication required" });
           return;
         }
 
@@ -155,6 +210,7 @@ app.prepare().then(() => {
 
         if (!conversationId || !content) {
           console.error("❌ Invalid message data:", data);
+          socket.emit("error", { message: "Invalid message data" });
           return;
         }
 
@@ -163,6 +219,7 @@ app.prepare().then(() => {
         );
 
         const conversationRoom = `conversation-${conversationId}`;
+        const timestamp = new Date();
 
         // Broadcast message to conversation room (for real-time chat)
         socket.to(conversationRoom).emit("new_message", {
@@ -171,7 +228,7 @@ app.prepare().then(() => {
           senderId: socket.userId,
           senderName: socket.userName,
           content: content,
-          timestamp: new Date().toLocaleTimeString("en-US", {
+          timestamp: timestamp.toLocaleTimeString("en-US", {
             hour: "numeric",
             minute: "2-digit",
             hour12: true,
@@ -180,46 +237,51 @@ app.prepare().then(() => {
           tempId: tempId,
         });
 
+        // Send notification to users not in the conversation
         socket.broadcast.emit("notification_update", {
           type: "new_message",
           conversationId: conversationId,
           fromUserId: socket.userId,
           fromUserName: socket.userName,
+          timestamp: timestamp,
         });
 
         console.log(
           `🔔 Notification broadcasted for conversation: ${conversationId}`
         );
-        // Clear typing indicator for sender
-        const typingKey = `${conversationId}`;
-        if (conversationTyping.has(typingKey)) {
-          const typingSet = conversationTyping.get(typingKey);
-          typingSet.delete(socket.userId);
 
+        // Clear typing indicator for sender
+        const typingSet = conversationTyping.get(conversationId);
+        if (typingSet && typingSet.has(socket.userId)) {
+          typingSet.delete(socket.userId);
           socket.to(conversationRoom).emit("user_stopped_typing", {
             userId: socket.userId,
             conversationId: conversationId,
           });
         }
+
+        // Confirm message sent
+        socket.emit("message_sent", { tempId, conversationId });
       } catch (error) {
         console.error("💥 Send message error:", error);
+        socket.emit("error", { message: "Failed to send message" });
       }
     });
 
     // === TYPING INDICATORS ===
-    socket.on("typing_start", (data) => {
+    socket.on("typing_start", (data: TypingData) => {
       try {
         if (!socket.userId || !data.conversationId) return;
 
         const { conversationId } = data;
-        const typingKey = `${conversationId}`;
         const conversationRoom = `conversation-${conversationId}`;
 
-        if (!conversationTyping.has(typingKey)) {
-          conversationTyping.set(typingKey, new Set());
+        if (!conversationTyping.has(conversationId)) {
+          conversationTyping.set(conversationId, new Set());
         }
 
-        conversationTyping.get(typingKey).add(socket.userId);
+        const typingSet = conversationTyping.get(conversationId)!;
+        typingSet.add(socket.userId);
 
         socket.to(conversationRoom).emit("user_started_typing", {
           userId: socket.userId,
@@ -231,47 +293,54 @@ app.prepare().then(() => {
       }
     });
 
-    socket.on("typing_stop", (data) => {
+    socket.on("typing_stop", (data: TypingData) => {
       try {
         if (!socket.userId || !data.conversationId) return;
 
         const { conversationId } = data;
-        const typingKey = `${conversationId}`;
         const conversationRoom = `conversation-${conversationId}`;
+        const typingSet = conversationTyping.get(conversationId);
 
-        if (conversationTyping.has(typingKey)) {
-          conversationTyping.get(typingKey).delete(socket.userId);
+        if (typingSet) {
+          typingSet.delete(socket.userId);
 
           socket.to(conversationRoom).emit("user_stopped_typing", {
             userId: socket.userId,
             conversationId: conversationId,
           });
+
+          if (typingSet.size === 0) {
+            conversationTyping.delete(conversationId);
+          }
         }
       } catch (error) {
         console.error("💥 Typing stop error:", error);
       }
     });
 
-    // === DISCONNECT HANDLING ===
-    socket.on("disconnect", () => {
+    socket.on("disconnect", (reason) => {
       try {
-        console.log(`🔌 User disconnected: ${socket.id}`);
+        console.log(`🔌 User disconnected: ${socket.id}, reason: ${reason}`);
 
-        if (socket.userId) {
-          // Clean up user tracking
-          connectedUsers.delete(socket.userId);
+        // Add type guards to fix TypeScript errors
+        if (socket.userId && socket.userName) {
+          const userId = socket.userId; // Now TypeScript knows it's not undefined
+          const userName = socket.userName;
+
+          // IMMEDIATE cleanup
+          connectedUsers.delete(userId);
           userSockets.delete(socket.id);
 
-          // Clean up typing indicators
+          // Clean up typing indicators immediately
           conversationTyping.forEach((typingSet, conversationId) => {
-            if (typingSet.has(socket.userId)) {
-              typingSet.delete(socket.userId);
+            if (typingSet.has(userId)) {
+              typingSet.delete(userId);
 
-              // Broadcast typing stopped
+              // Broadcast typing stopped immediately
               socket.broadcast
                 .to(`conversation-${conversationId}`)
                 .emit("user_stopped_typing", {
-                  userId: socket.userId,
+                  userId: userId,
                   conversationId: conversationId,
                 });
 
@@ -281,25 +350,60 @@ app.prepare().then(() => {
             }
           });
 
-          // Broadcast user offline
+          // IMMEDIATE offline broadcast
           socket.broadcast.emit("user_offline", {
-            userId: socket.userId,
+            userId: userId,
             timestamp: new Date(),
           });
 
-          console.log(
-            `👋 Cleaned up user: ${socket.userName} (${socket.userId})`
+          // Update all clients with new online users list immediately
+          socket.broadcast.emit(
+            "online_users",
+            Array.from(connectedUsers.keys())
           );
+
+          console.log(
+            `👋 Cleaned up user: ${userName} (${userId}) - IMMEDIATE`
+          );
+        } else {
+          console.log(`🔌 Unauthenticated user disconnected: ${socket.id}`);
         }
       } catch (error) {
         console.error("💥 Disconnect cleanup error:", error);
       }
     });
+
+    // === HEALTH CHECK ===
+    socket.on("ping", () => {
+      socket.emit("pong", { timestamp: new Date() });
+    });
   });
 
-  server.listen(port, (err) => {
-    if (err) throw err;
-    console.log(`🚀 Server ready on http://${hostname}:${port}`);
-    console.log(`🔌 Socket.io server initialized`);
+  server
+    .listen(port, () => {
+      console.log(`🚀 Server ready on http://${hostname}:${port}`);
+      console.log(`🔌 Socket.io server initialized`);
+      console.log(`📊 Environment: ${process.env.NODE_ENV}`);
+    })
+    .on("error", (err: Error) => {
+      console.error("❌ Server failed to start:", err);
+      process.exit(1);
+    });
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, shutting down gracefully");
+  global.io?.close(() => {
+    console.log("✅ Socket.io server closed");
+    process.exit(0);
+  });
+});
+
+process.on("SIGINT", () => {
+  console.log("🛑 SIGINT received, shutting down gracefully");
+  global.io?.close(() => {
+    console.log("✅ Socket.io server closed");
+    process.exit(0);
   });
 });
