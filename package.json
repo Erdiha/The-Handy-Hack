@@ -2,12 +2,11 @@
   "name": "neighborhood-handyman",
   "version": "0.1.0",
   "private": true,
-"scripts": {
+  "scripts": {
     "dev": "tsx server.ts",
-    "build": "next build",
-    "start": "NODE_ENV=production tsx server.ts",
-    "lint": "next lint",
-    "seed": "tsx scripts/seed-handymen.ts"
+    "build": "next build && npx tsc server.ts --outDir .next --target es2020 --module commonjs",
+    "start": "NODE_ENV=production node .next/server.js",
+    "lint": "next lint"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
@@ -42,7 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.4.6",
     "tailwindcss": "^4",
-    "tsx": "^4.20.4",
+    "tsx": "^4.20.5",
     "typescript": "^5"
   }
 }

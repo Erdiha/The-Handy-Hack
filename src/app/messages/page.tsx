@@ -422,30 +422,30 @@ export default function MessagesPage() {
     };
   }, [selectedConversationId, session?.user?.id]);
 
-  // Online status change notifications
-  useEffect(() => {
-    conversations.forEach((conversation) => {
-      const otherPerson = conversation.participants.find(
-        (p) => p.id !== session?.user?.id
-      );
+  // // Online status change notifications
+  // useEffect(() => {
+  //   conversations.forEach((conversation) => {
+  //     const otherPerson = conversation.participants.find(
+  //       (p) => p.id !== session?.user?.id
+  //     );
 
-      if (!otherPerson?.id) return;
+  //     if (!otherPerson?.id) return;
 
-      const isCurrentlyOnline = onlineUsers.includes(otherPerson.id);
-      const wasOnline = wasOnlineRef.current[otherPerson.id];
+  //     const isCurrentlyOnline = onlineUsers.includes(otherPerson.id);
+  //     const wasOnline = wasOnlineRef.current[otherPerson.id];
 
-      // Only show notification after initial load and when status actually changes
-      if (wasOnline !== null && wasOnline !== isCurrentlyOnline) {
-        const message = isCurrentlyOnline
-          ? `${otherPerson.name} is now online`
-          : `${otherPerson.name} went offline`;
+  //     // Only show notification after initial load and when status actually changes
+  //     if (wasOnline !== null && wasOnline !== isCurrentlyOnline) {
+  //       const message = isCurrentlyOnline
+  //         ? `${otherPerson.name} is now online`
+  //         : `${otherPerson.name} went offline`;
 
-        showStatusToast(message, isCurrentlyOnline);
-      }
+  //       showStatusToast(message, isCurrentlyOnline);
+  //     }
 
-      wasOnlineRef.current[otherPerson.id] = isCurrentlyOnline;
-    });
-  }, [onlineUsers, conversations, session?.user?.id, showStatusToast]);
+  //     wasOnlineRef.current[otherPerson.id] = isCurrentlyOnline;
+  //   });
+  // }, [onlineUsers, conversations, session?.user?.id, showStatusToast]);
 
   // URL PARAMETER HANDLING
   const handleContactNowFlow = async () => {
@@ -768,11 +768,11 @@ export default function MessagesPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-xl lg:text-2xl font-bold">Messages</h1>
-                  <p className="text-orange-100 text-sm lg:text-base">
+                  <p className="text-orange-100 text-sm lg:text-md">
                     Stay connected with your neighborhood pros
                   </p>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className=" items-center space-x-2 hidden">
                   <motion.div
                     className={`w-3 h-3 rounded-full ${
                       isConnected ? "bg-green-400" : "bg-red-400"
@@ -780,7 +780,7 @@ export default function MessagesPage() {
                     animate={isConnected ? { scale: [1, 1.2, 1] } : {}}
                     transition={{ duration: 2, repeat: Infinity }}
                   />
-                  <span className="text-xs font-medium">
+                  <span className="text-xs font-medium hidden">
                     {isConnected ? "Online" : "Offline"}
                   </span>
                 </div>
@@ -855,12 +855,12 @@ export default function MessagesPage() {
                             </div>
 
                             {/* Enhanced online indicator */}
-                            <div className="absolute -bottom-1 -right-1">
+                            {/* <div className="absolute -bottom-1 -right-1">
                               <OnlineStatusIndicator
                                 isOnline={isOnline}
                                 size="md"
                               />
-                            </div>
+                            </div> */}
                           </div>
 
                           <div className="flex-1 min-w-0">
@@ -982,43 +982,42 @@ export default function MessagesPage() {
 
                     <div className="relative">
                       <div className="w-11 h-11 bg-slate-600 rounded-full flex items-center justify-center">
-                        <span className="text-white font-medium text-sm">
+                        <span className="text-white font-medium text-sm uppercase">
                           {otherParticipant?.name
                             .split(" ")
                             .map((n) => n[0])
                             .join("")}
                         </span>
                       </div>
-                      {onlineUsers.includes(otherParticipant?.id || "") && (
+                      {/* {onlineUsers.includes(otherParticipant?.id || "") && (
                         <div className="absolute bottom-0 right-0">
                           <OnlineStatusIndicator isOnline={true} size="sm" />
                         </div>
-                      )}
+                      )} */}
                     </div>
 
                     <div>
-                      <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                      <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2 capitalize">
                         {otherParticipant?.name}
-                        <OnlineStatusIndicator
+                        {/* <OnlineStatusIndicator
                           isOnline={onlineUsers.includes(
                             otherParticipant?.id || ""
                           )}
                           size="md"
-                        />
+                        /> */}
                       </h2>
                       <div className="flex items-center space-x-2 text-sm text-slate-500">
                         <span className="capitalize">
                           {otherParticipant?.role}
                         </span>
 
-                        <span>•</span>
-                        <OnlineStatusIndicator
+                        {/* <OnlineStatusIndicator
                           isOnline={onlineUsers.includes(
                             otherParticipant?.id || ""
                           )}
                           showText={true}
                           size="sm"
-                        />
+                        /> */}
 
                         {currentTypingUsers.length > 0 && (
                           <>

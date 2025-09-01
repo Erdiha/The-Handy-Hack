@@ -64,7 +64,6 @@ app.prepare().then(() => {
     await handle(req, res, parsedUrl);
   });
 
-  // In server.js, find this section:
   const io = new Server(server, {
     cors: {
       origin: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
