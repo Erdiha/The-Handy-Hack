@@ -88,6 +88,7 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
         customerName: users.name,
         photos: jobs.photos,
         acceptedBy: jobs.acceptedBy,
+        paymentStatus: jobs.paymentStatus,
       })
       .from(jobs)
       .innerJoin(users, eq(jobs.postedBy, users.id));
@@ -133,6 +134,9 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
         postedDate: postedDate,
         responses: 0, // Real response count (implement later)
         photos: [],
+        cceptedBy: job.acceptedBy?.toString() || undefined,
+        status: job.status,
+        paymentStatus: job.paymentStatus || "unpaid",
       };
     });
 

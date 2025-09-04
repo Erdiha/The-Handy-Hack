@@ -27,6 +27,7 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
         acceptedBy: jobs.acceptedBy,
         handymanName: users.name,
         handymanPhone: users.phone,
+        paymentStatus: jobs.paymentStatus,
       })
       .from(jobs)
       .leftJoin(users, eq(jobs.acceptedBy, users.id))
@@ -65,6 +66,7 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
       createdAt: job.createdAt.toISOString(),
       acceptedAt: job.acceptedAt?.toISOString(),
       completedAt: job.completedAt?.toISOString(),
+      paymentStatus: job.paymentStatus,
       handyman: job.acceptedBy
         ? {
             id: job.acceptedBy.toString(),

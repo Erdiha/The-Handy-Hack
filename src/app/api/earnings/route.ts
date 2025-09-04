@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { jobs } from "@/lib/schema";
+import { jobs, payments } from "@/lib/schema";
 import { withAuth, AuthenticatedRequest } from "@/lib/security";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 export const GET = withAuth(async (request: AuthenticatedRequest) => {
   try {
@@ -16,41 +16,49 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
       today.getDate()
     );
     const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay()); // Start of this week
+    startOfWeek.setDate(today.getDate() - today.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
 
-    // Get completed jobs by this handyman
+    // Get completed jobs with RELEASED payments only
     const completedJobs = await db
       .select({
         id: jobs.id,
         budgetAmount: jobs.budgetAmount,
         completedAt: jobs.completedAt,
         budget: jobs.budget,
+        handymanPayout: payments.handymanPayout, // Use actual payout, not budget
+        releasedAt: payments.releasedAt,
       })
       .from(jobs)
+      .innerJoin(payments, eq(payments.jobId, jobs.id))
       .where(
-        and(eq(jobs.acceptedBy, handymanId), eq(jobs.status, "completed"))
+        and(
+          eq(jobs.acceptedBy, handymanId),
+          eq(jobs.status, "completed"),
+          eq(payments.status, "released") // CRITICAL: Only count released payments
+        )
       );
 
-    // Calculate earnings
+    // Calculate earnings using actual payout amounts
     let todayEarnings = 0;
     let weeklyEarnings = 0;
     let jobsToday = 0;
     let jobsThisWeek = 0;
 
     completedJobs.forEach((job) => {
-      const amount = parseFloat(job.budgetAmount || "0");
-      const completedDate = job.completedAt ? new Date(job.completedAt) : null;
+      // Use handymanPayout (actual amount received) not budgetAmount
+      const amount = (job.handymanPayout || 0) / 100; // Convert from cents to dollars
+      const releasedDate = job.releasedAt ? new Date(job.releasedAt) : null;
 
-      if (completedDate) {
+      if (releasedDate) {
         // Today's earnings
-        if (completedDate >= startOfToday) {
+        if (releasedDate >= startOfToday) {
           todayEarnings += amount;
           jobsToday++;
         }
 
         // Weekly earnings
-        if (completedDate >= startOfWeek) {
+        if (releasedDate >= startOfWeek) {
           weeklyEarnings += amount;
           jobsThisWeek++;
         }

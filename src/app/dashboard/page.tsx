@@ -17,6 +17,8 @@ import { CompletedJobsModal } from "@/components/modals/CompletedJobsModal";
 import { ArchivedJobsModal } from "@/components/modals/ArchivedJobsModal";
 import { CustomerJobDetailsModal } from "@/components/modals/CustomerJobDetailsModal";
 import { EmergencyAlertModal } from "@/components/modals/EmergencyAlertModal";
+import { PaymentButton } from "@/components/payment/PaymentButton";
+import { EscrowAlerts } from "@/components/dashboard/EscrowAlerts";
 
 interface SessionUser {
   id: string;
@@ -38,6 +40,7 @@ export interface CustomerJob {
   createdAt: string;
   acceptedAt?: string;
   completedAt?: string;
+  paymentStatus?: string;
   handyman?: {
     id: string;
     name: string;
@@ -595,7 +598,7 @@ function HandymanDashboard({
               Let&apos;s make today productive in {profile.neighborhood}
             </p>
           </div>
-          <div className="flex items-center space-x-3">
+          {/* <div className="flex items-center space-x-3">
             {isAvailable === null ? (
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 bg-gray-300 rounded-full animate-pulse"></div>
@@ -627,7 +630,7 @@ function HandymanDashboard({
                 </Button>
               </>
             )}
-          </div>
+          </div> */}
 
           {/* FUTURE: Scheduling feature - commented out for now
 <div className="flex items-center space-x-2 pl-4 border-l border-slate-300">
@@ -1161,7 +1164,7 @@ function CustomerDashboard({
           </div>
 
           {/* Customer availability toggle */}
-          <div className="flex items-center space-x-3">
+          {/* <div className=" items-center space-x-3 hidden">
             {isAvailable === null ? (
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 bg-gray-300 rounded-full animate-pulse"></div>
@@ -1191,8 +1194,16 @@ function CustomerDashboard({
                 </Button>
               </>
             )}
-          </div>
+          </div> */}
         </div>
+      </motion.div>
+      <motion.div
+        className="mb-8"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.1 }}
+      >
+        <EscrowAlerts />
       </motion.div>
 
       <div className="grid lg:grid-cols-12 gap-8">
@@ -1277,7 +1288,7 @@ function CustomerDashboard({
                       </h3>
                       <p className="text-slate-600 text-sm">
                         {job.status} • {job.category}
-                        {job.status === "completed" && " • ✓ Completed"}
+                        {job.status === "completed" && " • ✅ Completed"}
                         {job.status === "cancelled" && " • ✗ Cancelled"}
                         {job.status === "archived" && " • 📦 Archived"}
                       </p>
@@ -1286,6 +1297,24 @@ function CustomerDashboard({
                           Handyman: {job.handyman.name}
                         </p>
                       )}
+
+                      {/* ADD PAYMENT BUTTON HERE */}
+                      <div
+                        className="mt-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <PaymentButton
+                          jobId={job.id}
+                          jobTitle={job.title}
+                          jobAmount={parseFloat(job.budgetAmount || "0")}
+                          currentUserId={user.id}
+                          jobPosterId={user.id} // Customer is always the poster
+                          jobAcceptedBy={job.handyman?.id}
+                          jobStatus={job.status}
+                          paymentStatus={job.paymentStatus || "unpaid"}
+                          onPaymentUpdate={fetchCustomerJobs}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>

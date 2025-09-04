@@ -11,5 +11,9 @@ export interface Job {
   postedDate: string;
   responses: number;
   photos?: string[];
-  customerId: string; // ADD THIS - real customer ID
+  customerId: string;
+
+  acceptedBy?: string; // Handyman who accepted the job
+  status: string; // Job status (open, accepted, completed)
+  paymentStatus: string; // Payment status (unpaid, paid, released)
 }

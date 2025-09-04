@@ -4,9 +4,11 @@ import { Navbar } from "@/components/layout/Navbar";
 import { AuthSessionProvider } from "@/components/providers/SessionProviders";
 import "./globals.css";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+
 const inter = Inter({ subsets: ["latin"] });
+
 export const metadata: Metadata = {
-  title: "FixMyHood - Neighborhood Helper Marketplace",
+  title: "The Handy Hack - Neighborhood Helper Marketplace",
   description: "Connect with trusted local helpers in your neighborhood",
 };
 

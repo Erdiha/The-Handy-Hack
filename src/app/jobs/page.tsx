@@ -6,6 +6,8 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { Job } from "@/types/jobs";
+import { PaymentButton } from "@/components/payment/PaymentButton";
+import { useRouter } from "next/navigation";
 
 export default function JobsPage() {
   const { data: session } = useSession();
@@ -13,6 +15,13 @@ export default function JobsPage() {
   const [selectedUrgency, setSelectedUrgency] = useState("All");
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (session?.user?.role === "customer") {
+      router.push("/dashboard");
+    }
+  }, [session]);
 
   useEffect(() => {
     fetchJobs();
@@ -62,6 +71,19 @@ export default function JobsPage() {
     "Drywall Repair",
     "General Repair",
   ];
+
+  if (session?.user?.role === "customer") {
+    return (
+      <div className="min-h-[calc(100vh-5rem)] bg-orange-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">
+            Redirecting to Dashboard...
+          </h2>
+          <p className="text-slate-600">Manage your jobs from your dashboard</p>
+        </div>
+      </div>
+    );
+  }
 
   // Filter out jobs posted by current user AND apply other filters
   const filteredJobs = jobs.filter((job) => {
@@ -185,6 +207,7 @@ export default function JobsPage() {
                       job={job}
                       index={index}
                       currentUserId={session?.user?.id}
+                      onJobUpdate={fetchJobs}
                     />
                   ))
                 )}
@@ -236,19 +259,6 @@ export default function JobsPage() {
                   </p>
                 </div>
               </div>
-
-              {/* Profile Completion */}
-              {/* <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-3xl shadow-lg p-6 text-white">
-                <h3 className="text-lg font-bold mb-3">
-                  🎯 Boost Your Profile
-                </h3>
-                <p className="text-green-100 text-sm mb-4">
-                  Complete your profile to get 3x more job responses
-                </p>
-                <Button className="w-full cursor-pointer text-green-600 hover:bg-green-50 hover:text-black font-bold py-3 rounded-xl">
-                  Update Profile
-                </Button>
-              </div> */}
             </div>
           </div>
         </div>
@@ -262,14 +272,16 @@ function JobCard({
   job,
   index,
   currentUserId,
+  onJobUpdate,
 }: {
   job: Job;
   index: number;
   currentUserId?: string;
+  onJobUpdate: () => void;
 }) {
-  const [accepting, setAccepting] = useState(false); // ADD THIS
+  console.log("🔍 Job data for job", job.id, ":", job); // Add this line
+  const [accepting, setAccepting] = useState(false);
 
-  // ADD THIS FUNCTION:
   const handleAcceptJob = async (jobId: string) => {
     if (accepting) return;
 
@@ -283,8 +295,7 @@ function JobCard({
 
       if (data.success) {
         alert("Job accepted successfully!");
-        // Refresh the page to update job list
-        window.location.reload();
+        onJobUpdate(); // Refresh the job list
       } else {
         alert(data.error || "Failed to accept job");
       }
@@ -390,6 +401,22 @@ function JobCard({
         {/* Description */}
         <p className="text-slate-700 leading-relaxed mb-6">{job.description}</p>
 
+        {/* Payment Integration - Show for customer OR handyman who accepted */}
+        {(isOwnJob || (job.acceptedBy && job.acceptedBy === currentUserId)) && (
+          <div className="mb-4">
+            <PaymentButton
+              jobId={job.id}
+              jobTitle={job.title}
+              jobAmount={job.budgetAmount ? parseFloat(job.budgetAmount) : 0}
+              currentUserId={currentUserId}
+              jobPosterId={job.customerId}
+              jobAcceptedBy={job.acceptedBy}
+              jobStatus={job.status}
+              paymentStatus={job.paymentStatus || "unpaid"}
+              onPaymentUpdate={onJobUpdate}
+            />
+          </div>
+        )}
         {/* Footer */}
         <div className="flex items-center justify-between">
           <div className="text-sm text-slate-500">Posted by {job.postedBy}</div>
