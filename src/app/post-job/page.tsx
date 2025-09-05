@@ -573,6 +573,48 @@ export default function PostJobPage() {
                   >
                     {loading ? "Posting..." : "Post Job & Get Quotes"}
                   </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        const testJob = {
+                          title: "Test Job - Fix Faucet",
+                          description:
+                            "This is a hardcoded test job for testing purposes. Please ignore.",
+                          category: "Plumbing",
+                          urgency: "flexible",
+                          budget: "hour",
+                          budgetAmount: "75",
+                          location: "123 Test Street, Testville",
+                        };
+
+                        const response = await fetch("/api/jobs", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(testJob),
+                        });
+
+                        const data = await response.json();
+
+                        if (data.success) {
+                          alert("✅ Test job created successfully!");
+                          router.push("/jobs?posted=true");
+                        } else {
+                          alert("❌ Failed to create test job: " + data.error);
+                        }
+                      } catch (error) {
+                        console.error(error);
+                        alert("❌ Error creating test job.");
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+                  >
+                    Create Test Job
+                  </Button>
                 </div>
               </div>
             </div>

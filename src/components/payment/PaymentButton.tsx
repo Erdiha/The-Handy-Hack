@@ -5,6 +5,14 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { PaymentModal } from "@/components/modals/PaymentModal";
 import { SimpleRefundButton } from "./SimpleRefundButton";
+import { ReportProblemModal } from "@/components/modals/ReportProblemModal";
+
+interface ActiveTicket {
+  id: number;
+  problemType: string;
+  status: string;
+  createdAt: string;
+}
 
 interface PaymentButtonProps {
   jobId: string;
@@ -57,11 +65,14 @@ export function PaymentButton({
   onPaymentUpdate,
 }: PaymentButtonProps) {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isReportProblemModalOpen, setIsReportProblemModalOpen] =
+    useState(false);
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentStatusData | null>(
     null
   );
   const [message, setMessage] = useState("");
+  const [activeTicket, setActiveTicket] = useState<ActiveTicket | null>(null);
 
   const isCustomer = currentUserId === jobPosterId;
 
@@ -78,9 +89,25 @@ export function PaymentButton({
     }
   };
 
+  // Check for active support tickets
+  const checkActiveTickets = async () => {
+    try {
+      const response = await fetch(`/api/support/check-tickets?jobId=${jobId}`);
+      const data = await response.json();
+      if (data.success && data.hasActiveTicket) {
+        setActiveTicket(data.ticket);
+      } else {
+        setActiveTicket(null);
+      }
+    } catch (error) {
+      console.error("Failed to check active tickets:", error);
+    }
+  };
+
   useEffect(() => {
     if (jobAcceptedBy) {
       fetchPaymentStatus();
+      checkActiveTickets();
     }
   }, [jobId, jobAcceptedBy]);
 
@@ -201,25 +228,71 @@ export function PaymentButton({
     case "escrowed":
       // Show different options based on job completion status
       if (currentJobStatus === "completed") {
-        return (
-          <div className="space-y-2">
-            <Button
-              onClick={handleReleasePayment}
-              disabled={loading}
-              className="bg-green-500 hover:bg-green-600 text-white font-medium"
-            >
-              {loading
-                ? "Releasing..."
-                : `✅ Release Payment ($${payoutAmount.toFixed(2)})`}
-            </Button>
-            <div className="text-xs text-slate-600">
-              Job completed by {handymanName}. Release payment to finish
-              transaction.
+        // Check if there's an active support ticket
+        if (activeTicket) {
+          return (
+            <div className="space-y-3">
+              {/* Issue reported message */}
+              <div className="text-center p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                <div className="text-sm font-medium text-yellow-800 mb-1">
+                  🚧 Issue reported (#{activeTicket.id}) - payment on hold
+                </div>
+                <div className="text-sm text-yellow-700">
+                  Support will contact you within 24 hours
+                </div>
+              </div>
+
+              {/* Status info */}
+              <div className="text-center text-xs text-slate-500">
+                Report status: {activeTicket.status} • Problem:{" "}
+                {activeTicket.problemType}
+              </div>
             </div>
-            <SimpleRefundButton
+          );
+        }
+
+        // Normal completed job flow (no active tickets)
+        return (
+          <div className="space-y-3">
+            {/* Auto-release message */}
+            <div className="text-center p-4 bg-green-50 border border-green-200 rounded-xl">
+              <div className="text-sm font-medium text-green-800 mb-1">
+                ✅ {handymanName} completed your job
+              </div>
+              <div className="text-sm text-green-700">
+                Payment releases automatically in 24 hours
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3">
+              <Button
+                onClick={handleReleasePayment}
+                disabled={loading}
+                className="flex-1 bg-green-500 hover:bg-green-600 text-white"
+              >
+                {loading ? "Releasing..." : "Release Now"}
+              </Button>
+              <Button
+                onClick={() => setIsReportProblemModalOpen(true)}
+                variant="outline"
+                className="flex-1 border-orange-300 text-orange-600 hover:bg-orange-50"
+              >
+                Report Problem
+              </Button>
+            </div>
+
+            {/* Report Problem Modal */}
+            <ReportProblemModal
+              isOpen={isReportProblemModalOpen}
+              onClose={() => {
+                setIsReportProblemModalOpen(false);
+                // Refresh ticket status after reporting
+                checkActiveTickets();
+              }}
               jobId={jobId}
-              paymentAmount={jobAmount}
-              onRefundUpdate={onPaymentUpdate}
+              jobTitle={jobTitle}
+              handymanName={handymanName}
             />
           </div>
         );
@@ -227,7 +300,7 @@ export function PaymentButton({
         return (
           <div className="space-y-2">
             <Button disabled className="bg-blue-500 text-white cursor-default">
-              💰 Payment Secured ($${jobAmount})
+              💰 Payment Secured (${jobAmount})
             </Button>
             <div className="text-xs text-slate-600">
               Payment is held in escrow. Will be released when {handymanName}{" "}

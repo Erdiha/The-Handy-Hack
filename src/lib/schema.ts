@@ -10,6 +10,7 @@ import {
   decimal,
   unique,
   json,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 
 // ================================
@@ -441,9 +442,49 @@ export const disputeMessages = pgTable("dispute_messages", {
   readBy: integer("read_by").array().default([]), // User IDs who have read this
 });
 
-// ================================
-// UPDATE EXISTING PAYMENTS STATUS
-// ================================
+// Support ticket status enum
+export const ticketStatusEnum = pgEnum("ticket_status", [
+  "open",
+  "investigating",
+  "resolved",
+  "closed",
+]);
 
-// Update your existing payments table status to include these new states:
-// status: "pending" | "escrowed" | "released" | "disputed" | "refunding" | "refunded" | "failed"
+// Support ticket priority enum
+export const ticketPriorityEnum = pgEnum("ticket_priority", [
+  "low",
+  "normal",
+  "high",
+  "urgent",
+]);
+
+export const supportTickets = pgTable("support_tickets", {
+  id: serial("id").primaryKey(),
+
+  // Relationships
+  jobId: integer("job_id").references(() => jobs.id),
+  reportedBy: integer("reported_by")
+    .notNull()
+    .references(() => users.id),
+  assignedTo: integer("assigned_to").references(() => users.id), // Support agent
+
+  // Ticket details
+  problemType: varchar("problem_type", { length: 100 }).notNull(),
+  description: text("description").notNull(),
+  status: ticketStatusEnum("status").notNull().default("open"),
+  priority: ticketPriorityEnum("priority").notNull().default("normal"),
+
+  // Resolution
+  resolution: text("resolution"),
+  resolvedBy: integer("resolved_by").references(() => users.id),
+  resolvedAt: timestamp("resolved_at"),
+
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+
+  // Job context (denormalized for easier queries)
+  jobTitle: varchar("job_title", { length: 200 }),
+  handymanName: varchar("handyman_name", { length: 100 }),
+  customerEmail: varchar("customer_email", { length: 255 }),
+});

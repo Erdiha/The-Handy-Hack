@@ -14,6 +14,9 @@ export function Navbar() {
   const pathname = usePathname();
   const { unreadMessageCount } = useNotifications();
 
+  // Admin check
+  const isAdmin = session?.user?.email === "erdiha@gmail.com";
+
   // different nav items for different user types
   const getNavigationItems = () => {
     if (!session) {
@@ -114,6 +117,21 @@ export function Navbar() {
                     </div>
                   </div>
                 </div>
+
+                {/* Admin Link - Desktop */}
+                {isAdmin && (
+                  <Link
+                    href="/admin/support"
+                    className={`flex items-center space-x-2 px-3 py-2 rounded-lg font-medium transition-colors duration-200 text-sm ${
+                      pathname === "/admin/support"
+                        ? "text-orange-600 bg-orange-100"
+                        : "text-slate-500 hover:text-orange-600 hover:bg-orange-50"
+                    }`}
+                  >
+                    <span className="text-orange-600">🛠️</span>
+                    <span className="hidden xl:inline">Support Admin</span>
+                  </Link>
+                )}
 
                 {/* Sign Out */}
                 <div className="w-[1px] h-10 bg-orange-200 hidden md:inline-block"></div>
@@ -249,6 +267,22 @@ export function Navbar() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Admin Link - Mobile */}
+                      {isAdmin && (
+                        <Link
+                          href="/admin/support"
+                          onClick={closeMenu}
+                          className={`flex items-center justify-center px-4 py-3 bg-orange-100 rounded-lg hover:bg-orange-200 transition-colors duration-200 ${
+                            pathname === "/admin/support"
+                              ? "text-orange-700 font-semibold"
+                              : "text-orange-600"
+                          }`}
+                        >
+                          <span className="mr-2">🛠️</span>
+                          <span className="font-medium">Support Admin</span>
+                        </Link>
+                      )}
 
                       {/* Mobile Actions Row */}
                       <div className="flex items-center justify-between px-4 py-3 bg-orange-100 rounded-lg">

@@ -15,6 +15,14 @@ interface EscrowJob {
   daysSinceAccepted?: number;
 }
 
+interface JobWithTicket extends EscrowJob {
+  activeTicket?: {
+    id: number;
+    problemType: string;
+    status: string;
+  };
+}
+
 interface EscrowData {
   summary: {
     totalEscrowed: number;
@@ -37,10 +45,40 @@ export function EscrowAlerts({ onPaymentUpdate }: EscrowAlertsProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [releasing, setReleasing] = useState<number | null>(null);
   const [message, setMessage] = useState("");
+  const [jobsWithTickets, setJobsWithTickets] = useState<JobWithTicket[]>([]);
+  const [jobsReadyToRelease, setJobsReadyToRelease] = useState<EscrowJob[]>([]);
 
   useEffect(() => {
     fetchEscrowAlerts();
   }, []);
+
+  const checkActiveTicketsForJobs = async (
+    jobs: EscrowJob[]
+  ): Promise<JobWithTicket[]> => {
+    const jobsWithTicketStatus = await Promise.all(
+      jobs.map(async (job) => {
+        try {
+          const response = await fetch(
+            `/api/support/check-tickets?jobId=${job.jobId}`
+          );
+          const data = await response.json();
+
+          if (data.success && data.hasActiveTicket) {
+            return {
+              ...job,
+              activeTicket: data.ticket,
+            };
+          }
+          return job;
+        } catch (error) {
+          console.error(`Failed to check tickets for job ${job.jobId}:`, error);
+          return job;
+        }
+      })
+    );
+
+    return jobsWithTicketStatus;
+  };
 
   const fetchEscrowAlerts = async () => {
     try {
@@ -48,8 +86,21 @@ export function EscrowAlerts({ onPaymentUpdate }: EscrowAlertsProps) {
       const data = await response.json();
       if (data.success) {
         setEscrowData(data);
-        // Auto-expand if there are jobs ready to release
-        if (data.readyToRelease.length > 0) {
+
+        // Check for active tickets on ready-to-release jobs
+        const jobsWithTicketData = await checkActiveTicketsForJobs(
+          data.readyToRelease
+        );
+
+        // Separate jobs with and without active tickets
+        const jobsOnHold = jobsWithTicketData.filter((job) => job.activeTicket);
+        const jobsReady = jobsWithTicketData.filter((job) => !job.activeTicket);
+
+        setJobsWithTickets(jobsOnHold);
+        setJobsReadyToRelease(jobsReady);
+
+        // Auto-expand if there are jobs ready to release or on hold
+        if (jobsReady.length > 0 || jobsOnHold.length > 0) {
           setIsExpanded(true);
         }
       }
@@ -61,21 +112,21 @@ export function EscrowAlerts({ onPaymentUpdate }: EscrowAlertsProps) {
   };
 
   const handleReleasePayment = async (jobId: number) => {
-    console.log("🔥 RELEASE BUTTON CLICKED for job:", jobId); // DEBUG LINE
+    console.log("🔥 RELEASE BUTTON CLICKED for job:", jobId);
     setReleasing(jobId);
     setMessage("");
 
     try {
-      console.log("📡 Calling /api/payments/release..."); // DEBUG LINE
+      console.log("📡 Calling /api/payments/release...");
       const response = await fetch("/api/payments/release", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobId }),
       });
 
-      console.log("📨 Response status:", response.status); // DEBUG LINE
+      console.log("📨 Response status:", response.status);
       const data = await response.json();
-      console.log("📨 Response data:", data); // DEBUG LINE
+      console.log("📨 Response data:", data);
 
       if (data.success) {
         setMessage(`✅ ${data.message}`);
@@ -110,9 +161,9 @@ export function EscrowAlerts({ onPaymentUpdate }: EscrowAlertsProps) {
     return null; // Don't show anything if no escrowed payments
   }
 
-  const { summary, readyToRelease, workInProgress } = escrowData;
-  const hasUrgentActions = readyToRelease.length > 0;
-  const urgentJobs = readyToRelease.filter(
+  const { summary, workInProgress } = escrowData;
+  const hasUrgentActions = jobsReadyToRelease.length > 0;
+  const urgentJobs = jobsReadyToRelease.filter(
     (job) => (job.daysSinceCompleted || 0) >= 2
   );
 
@@ -123,6 +174,8 @@ export function EscrowAlerts({ onPaymentUpdate }: EscrowAlertsProps) {
       className={`border rounded-xl p-4 shadow-sm ${
         hasUrgentActions
           ? "bg-orange-50 border-orange-200"
+          : jobsWithTickets.length > 0
+          ? "bg-yellow-50 border-yellow-200"
           : "bg-blue-50 border-blue-200"
       }`}
     >
@@ -152,27 +205,50 @@ export function EscrowAlerts({ onPaymentUpdate }: EscrowAlertsProps) {
         <div className="flex items-center space-x-3">
           <div
             className={`w-3 h-3 rounded-full ${
-              hasUrgentActions ? "bg-orange-500 animate-pulse" : "bg-blue-500"
+              hasUrgentActions
+                ? "bg-orange-500 animate-pulse"
+                : jobsWithTickets.length > 0
+                ? "bg-yellow-500"
+                : "bg-blue-500"
             }`}
           ></div>
           <div>
             <h3
               className={`font-semibold ${
-                hasUrgentActions ? "text-orange-900" : "text-blue-900"
+                hasUrgentActions
+                  ? "text-orange-900"
+                  : jobsWithTickets.length > 0
+                  ? "text-yellow-900"
+                  : "text-blue-900"
               }`}
             >
               💰 ${summary.totalEscrowed.toFixed(2)} in Escrow
             </h3>
             <p
               className={`text-sm ${
-                hasUrgentActions ? "text-orange-700" : "text-blue-700"
+                hasUrgentActions
+                  ? "text-orange-700"
+                  : jobsWithTickets.length > 0
+                  ? "text-yellow-700"
+                  : "text-blue-700"
               }`}
             >
               {hasUrgentActions ? (
                 <span className="font-medium">
-                  🚨 {readyToRelease.length} job
-                  {readyToRelease.length !== 1 ? "s" : ""} completed - Release
-                  payment now!
+                  🚨 {jobsReadyToRelease.length} job
+                  {jobsReadyToRelease.length !== 1 ? "s" : ""} completed -
+                  Release payment now!
+                  {jobsWithTickets.length > 0 && (
+                    <span className="ml-2">
+                      • ⏸️ {jobsWithTickets.length} on hold
+                    </span>
+                  )}
+                </span>
+              ) : jobsWithTickets.length > 0 ? (
+                <span className="font-medium">
+                  ⏸️ {jobsWithTickets.length} job
+                  {jobsWithTickets.length !== 1 ? "s" : ""} on hold - issue
+                  {jobsWithTickets.length !== 1 ? "s" : ""} reported
                 </span>
               ) : (
                 `${summary.totalJobs} payment${
@@ -190,6 +266,8 @@ export function EscrowAlerts({ onPaymentUpdate }: EscrowAlertsProps) {
           className={`border-2 ${
             hasUrgentActions
               ? "border-orange-300 text-orange-700 hover:bg-orange-100"
+              : jobsWithTickets.length > 0
+              ? "border-yellow-300 text-yellow-700 hover:bg-yellow-100"
               : "border-blue-300 text-blue-700 hover:bg-blue-100"
           }`}
         >
@@ -207,12 +285,12 @@ export function EscrowAlerts({ onPaymentUpdate }: EscrowAlertsProps) {
             className="mt-4 space-y-4"
           >
             {/* Jobs Ready to Release */}
-            {readyToRelease.length > 0 && (
+            {jobsReadyToRelease.length > 0 && (
               <div className="space-y-3">
                 <h4 className="font-semibold text-orange-900 text-sm">
-                  🎯 Ready to Release ({readyToRelease.length})
+                  🎯 Ready to Release ({jobsReadyToRelease.length})
                 </h4>
-                {readyToRelease.map((job) => (
+                {jobsReadyToRelease.map((job) => (
                   <div
                     key={job.jobId}
                     className={`p-3 rounded-lg border-2 ${
@@ -250,6 +328,44 @@ export function EscrowAlerts({ onPaymentUpdate }: EscrowAlertsProps) {
                             ? "Releasing..."
                             : "Release Now"}
                         </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Jobs On Hold */}
+            {jobsWithTickets.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="font-semibold text-yellow-900 text-sm">
+                  ⏸️ On Hold ({jobsWithTickets.length})
+                </h4>
+                {jobsWithTickets.map((job) => (
+                  <div
+                    key={job.jobId}
+                    className="p-3 rounded-lg border-2 bg-yellow-100 border-yellow-200"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-slate-900">
+                          {job.jobTitle}
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          {job.handymanName} • {job.jobLocation}
+                        </p>
+                        <p className="text-sm text-yellow-700 font-medium mt-1">
+                          🚧 Issue reported #{job.activeTicket?.id} -{" "}
+                          {job.activeTicket?.problemType}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-slate-900">
+                          ${job.handymanPayout.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-yellow-600 mt-1">
+                          Payment on hold
+                        </p>
                       </div>
                     </div>
                   </div>
