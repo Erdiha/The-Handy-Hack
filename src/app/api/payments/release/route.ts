@@ -1,183 +1,166 @@
 // src/app/api/payments/release/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { payments, jobs, users } from "@/lib/schema";
 import { eq } from "drizzle-orm";
+import { releaseEscrowPayment } from "@/lib/stripe";
 
-export async function POST(request: Request) {
+export const runtime = "nodejs";
+
+// 🎛️ TOGGLE THIS TO SWITCH BETWEEN MOCK AND REAL STRIPE
+const USE_REAL_STRIPE = false; // Set to true for real Stripe Connect payments
+
+export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { jobId } = await request.json();
+    const { jobId } = await req.json();
 
-    // Validate input
     if (!jobId) {
       return NextResponse.json({ error: "Job ID required" }, { status: 400 });
     }
 
     const parsedJobId = parseInt(jobId, 10);
-    const parsedUserId = parseInt(session.user.id, 10);
-
-    if (isNaN(parsedJobId) || isNaN(parsedUserId)) {
-      return NextResponse.json(
-        { error: "Invalid parameters" },
-        { status: 400 }
-      );
+    if (isNaN(parsedJobId)) {
+      return NextResponse.json({ error: "Invalid job ID" }, { status: 400 });
     }
 
-    // Get job and payment details with handyman info
-    const results = await db
+    // Get payment and job details
+    const paymentResults = await db
       .select({
-        // Job info
-        jobId: jobs.id,
-        jobStatus: jobs.status,
-        jobPostedBy: jobs.postedBy,
-        jobAcceptedBy: jobs.acceptedBy,
-        jobTitle: jobs.title,
-
-        // Payment info
         paymentId: payments.id,
         paymentStatus: payments.status,
         handymanPayout: payments.handymanPayout,
-        stripePaymentIntentId: payments.stripePaymentIntentId,
-
-        // Handyman info
-        handymanName: users.name,
-        handymanEmail: users.email,
-        handymanStripeAccountId: users.stripeConnectAccountId,
+        stripeTransferId: payments.stripeTransferId,
+        customerId: payments.customerId,
+        handymanId: payments.handymanId,
+        jobStatus: jobs.status,
       })
-      .from(jobs)
-      .leftJoin(payments, eq(payments.jobId, jobs.id))
-      .leftJoin(users, eq(users.id, jobs.acceptedBy))
-      .where(eq(jobs.id, parsedJobId))
+      .from(payments)
+      .innerJoin(jobs, eq(payments.jobId, jobs.id))
+      .where(eq(payments.jobId, parsedJobId))
       .limit(1);
 
-    const result = results[0];
-    if (!result) {
-      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    if (paymentResults.length === 0) {
+      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
     }
 
-    // Verify user is the customer who posted the job
-    if (result.jobPostedBy !== parsedUserId) {
-      return NextResponse.json(
-        { error: "Only the job poster can release payment" },
-        { status: 403 }
-      );
+    const payment = paymentResults[0];
+
+    // Verify user is the customer who paid
+    if (payment.customerId !== parseInt(session.user.id)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    // Verify job is completed
-    if (result.jobStatus !== "completed") {
+    // Check payment status
+    if (payment.paymentStatus !== "escrowed") {
       return NextResponse.json(
         {
-          error: "Job must be completed before releasing payment",
-          currentStatus: result.jobStatus,
+          error: `Cannot release payment with status: ${payment.paymentStatus}`,
         },
         { status: 400 }
       );
     }
 
-    // Verify payment exists and is escrowed
-    if (!result.paymentId) {
+    // Check if already released
+    if (payment.stripeTransferId) {
+      return NextResponse.json({
+        success: true,
+        message: "Payment already released",
+        transferId: payment.stripeTransferId,
+      });
+    }
+
+    // Get handyman info
+    const handymanResults = await db
+      .select({
+        stripeConnectAccountId: users.stripeConnectAccountId,
+        name: users.name,
+      })
+      .from(users)
+      .where(eq(users.id, payment.handymanId))
+      .limit(1);
+
+    if (handymanResults.length === 0) {
       return NextResponse.json(
-        { error: "No payment found for this job" },
+        { error: "Handyman not found" },
         { status: 404 }
       );
     }
 
-    if (result.paymentStatus !== "escrowed") {
-      return NextResponse.json(
-        {
-          error: `Payment cannot be released. Current status: ${result.paymentStatus}`,
-          currentStatus: result.paymentStatus,
-        },
-        { status: 400 }
-      );
-    }
+    const handyman = handymanResults[0];
 
-    // Verify handyman exists
-    if (!result.jobAcceptedBy) {
-      return NextResponse.json(
-        { error: "No handyman assigned to this job" },
-        { status: 400 }
-      );
-    }
+    let transferId: string;
+    let message: string;
 
-    // MOCK STRIPE TRANSFER
-    // In real implementation:
-    // const transfer = await stripe.transfers.create({
-    //   amount: result.handymanPayout,
-    //   currency: "usd",
-    //   destination: result.handymanStripeAccountId
-    // });
+    if (USE_REAL_STRIPE) {
+      // 🔴 REAL STRIPE CONNECT MODE
+      if (!handyman.stripeConnectAccountId) {
+        return NextResponse.json(
+          {
+            error: "Handyman has not completed Stripe onboarding",
+          },
+          { status: 400 }
+        );
+      }
 
-    const mockStripeTransfer = {
-      success: true,
-      id: `tr_mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      amount: result.handymanPayout,
-      destination: result.handymanStripeAccountId || "acct_mock_handyman",
-    };
-
-    if (!mockStripeTransfer.success) {
-      return NextResponse.json(
-        { error: "Payment transfer to handyman failed" },
-        { status: 500 }
-      );
-    }
-
-    // Start database transaction-like operations
-    try {
-      // Update payment status to 'released'
-      await db
-        .update(payments)
-        .set({
-          status: "released",
-          releasedAt: new Date(),
-          stripeTransferId: mockStripeTransfer.id,
-        })
-        .where(eq(payments.id, result.paymentId));
-
-      // Update job payment status
-      await db
-        .update(jobs)
-        .set({
-          paymentStatus: "released",
-        })
-        .where(eq(jobs.id, parsedJobId));
-
-      return NextResponse.json({
-        success: true,
-        message: `Payment of $${((result.handymanPayout || 0) / 100).toFixed(
-          2
-        )} released to ${result.handymanName}`,
-        transferId: mockStripeTransfer.id,
-        handymanPayout: (result.handymanPayout || 0) / 100, // Convert to dollars
-        handymanName: result.handymanName,
-        jobTitle: result.jobTitle,
+      // Real Stripe transfer
+      const releaseResult = await releaseEscrowPayment({
+        jobId: parsedJobId,
+        handymanStripeAccountId: handyman.stripeConnectAccountId,
+        payoutCents: payment.handymanPayout,
+        currency: "usd",
       });
-    } catch (dbError) {
-      console.error("Database update failed during payment release:", dbError);
 
-      // In real implementation, you'd want to reverse the Stripe transfer here
-      return NextResponse.json(
-        {
-          error: "Payment was transferred but database update failed",
-          details: dbError instanceof Error ? dbError.message : "Unknown error",
-        },
-        { status: 500 }
-      );
+      if (!releaseResult.success) {
+        return NextResponse.json(
+          {
+            error: releaseResult.error,
+          },
+          { status: 400 }
+        );
+      }
+
+      transferId = releaseResult.value.id;
+      message = `Payment released to ${handyman.name}`;
+      console.log("✅ REAL Stripe payment released:", transferId);
+    } else {
+      // 🟡 MOCK MODE (for testing)
+      transferId = `test_transfer_${Date.now()}`;
+      message = `Payment released to ${handyman.name} (TEST MODE)`;
+      console.log("✅ MOCK payment released:", transferId);
     }
+
+    // Update database
+    await db
+      .update(payments)
+      .set({
+        status: "released",
+        releasedAt: new Date(),
+        stripeTransferId: transferId,
+      })
+      .where(eq(payments.id, payment.paymentId));
+
+    await db
+      .update(jobs)
+      .set({ paymentStatus: "released" })
+      .where(eq(jobs.id, parsedJobId));
+
+    return NextResponse.json({
+      success: true,
+      message,
+      transferId,
+      mode: USE_REAL_STRIPE ? "REAL" : "MOCK",
+    });
   } catch (error) {
-    console.error("Payment release error:", error);
+    console.error("❌ Release payment error:", error);
     return NextResponse.json(
-      {
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Failed to release payment" },
       { status: 500 }
     );
   }

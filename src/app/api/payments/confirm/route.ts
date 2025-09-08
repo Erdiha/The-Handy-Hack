@@ -5,6 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { payments, jobs } from "@/lib/schema";
 import { eq } from "drizzle-orm";
+import { stripe } from "@/lib/stripe";
+import type Stripe from "stripe";
 
 export async function POST(request: Request) {
   try {
@@ -15,7 +17,6 @@ export async function POST(request: Request) {
 
     const { paymentIntentId } = await request.json();
 
-    // Validate input
     if (!paymentIntentId) {
       return NextResponse.json(
         { error: "Payment intent ID required" },
@@ -23,109 +24,78 @@ export async function POST(request: Request) {
       );
     }
 
-    const parsedUserId = parseInt(session.user.id, 10);
-    if (isNaN(parsedUserId)) {
+    const userId = Number.parseInt(session.user.id, 10);
+    if (Number.isNaN(userId)) {
       return NextResponse.json({ error: "Invalid user ID" }, { status: 400 });
     }
 
-    // Find payment record by Stripe payment intent ID
-    const paymentResults = await db
+    // Source of truth: confirm PI is succeeded on Stripe
+    const pi: Stripe.PaymentIntent = await stripe.paymentIntents.retrieve(
+      paymentIntentId
+    );
+    if (pi.status !== "succeeded") {
+      return NextResponse.json(
+        { error: `PaymentIntent not succeeded (${pi.status})` },
+        { status: 400 }
+      );
+    }
+
+    // Find our local payment row by PI id
+    const rows = await db
       .select({
         id: payments.id,
         jobId: payments.jobId,
         customerId: payments.customerId,
-        handymanId: payments.handymanId,
         status: payments.status,
         totalCharged: payments.totalCharged,
-        handymanPayout: payments.handymanPayout,
       })
       .from(payments)
-      .where(eq(payments.stripePaymentIntentId, paymentIntentId))
+      .where(eq(payments.stripePaymentIntentId, pi.id))
       .limit(1);
 
-    const paymentRecord = paymentResults[0];
-    if (!paymentRecord) {
+    const payment = rows[0];
+    if (!payment) {
       return NextResponse.json({ error: "Payment not found" }, { status: 404 });
     }
 
-    // Verify user is the customer who made the payment
-    if (paymentRecord.customerId !== parsedUserId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    // Only the customer who paid can confirm
+    if (payment.customerId !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Check if payment is already processed
-    if (paymentRecord.status !== "pending") {
-      return NextResponse.json(
-        {
-          error: `Payment already ${paymentRecord.status}`,
-          currentStatus: paymentRecord.status,
-        },
-        { status: 400 }
-      );
-    }
-
-    // MOCK STRIPE CONFIRMATION
-    // In real implementation: const result = await stripe.paymentIntents.confirm(paymentIntentId);
-    // For now, we'll simulate a successful payment
-    const mockStripeConfirmation = {
-      success: true,
-      status: "succeeded",
-      id: paymentIntentId,
-    };
-
-    if (!mockStripeConfirmation.success) {
-      return NextResponse.json(
-        { error: "Payment confirmation failed with Stripe" },
-        { status: 400 }
-      );
-    }
-
-    // Start transaction-like operations
-    try {
-      // Update payment status to 'escrowed' (money is held until job completion)
-      await db
-        .update(payments)
-        .set({
-          status: "escrowed",
-          paidAt: new Date(),
-        })
-        .where(eq(payments.id, paymentRecord.id));
-
-      // Update job payment status
-      await db
-        .update(jobs)
-        .set({
-          paymentStatus: "escrowed",
-        })
-        .where(eq(jobs.id, paymentRecord.jobId));
-
+    // Idempotent: if already processed, return current state
+    if (payment.status !== "pending") {
       return NextResponse.json({
         success: true,
-        message: "Payment confirmed and escrowed successfully",
-        paymentStatus: "escrowed",
-        amount: paymentRecord.totalCharged / 100, // Convert cents to dollars
-        jobId: paymentRecord.jobId,
+        message: `Already ${payment.status}`,
+        paymentStatus: payment.status,
+        amount: payment.totalCharged / 100,
+        jobId: payment.jobId,
       });
-    } catch (dbError) {
-      console.error("Database update failed:", dbError);
-
-      // In a real app, you'd want to handle partial failures more carefully
-      // For now, return an error
-      return NextResponse.json(
-        {
-          error: "Payment was processed but database update failed",
-          details: dbError instanceof Error ? dbError.message : "Unknown error",
-        },
-        { status: 500 }
-      );
     }
-  } catch (error) {
-    console.error("Payment confirmation error:", error);
+
+    // Mark escrowed (DB)
+    await db
+      .update(payments)
+      .set({ status: "escrowed", paidAt: new Date() })
+      .where(eq(payments.id, payment.id));
+
+    await db
+      .update(jobs)
+      .set({ paymentStatus: "escrowed" })
+      .where(eq(jobs.id, payment.jobId));
+
+    return NextResponse.json({
+      success: true,
+      message: "Payment confirmed and escrowed",
+      paymentStatus: "escrowed",
+      amount: payment.totalCharged / 100,
+      jobId: payment.jobId,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json(
-      {
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Internal server error", details: msg },
       { status: 500 }
     );
   }

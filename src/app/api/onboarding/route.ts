@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { users, handymanProfiles, neighborhoods } from "@/lib/schema";
+import {
+  users,
+  handymanProfiles,
+  neighborhoods,
+  handymanServices,
+} from "@/lib/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST(request: Request) {
@@ -99,6 +104,28 @@ export async function POST(request: Request) {
         neighborhoodId: neighborhoodRecord[0].id,
         isVerified: false,
       });
+
+      // After the handymanProfiles insert, add this:
+      if (services && services.length > 0) {
+        interface ServiceRecord {
+          handymanId: number;
+          serviceName: string;
+          description: string;
+          basePrice: string;
+        }
+
+        const serviceRecords: ServiceRecord[] = services.map(
+          (service: string) => ({
+            handymanId: parseInt(session.user.id),
+            serviceName: service,
+            description: `${service} services`,
+            basePrice: hourlyRate, // Use hourly rate as base price
+          })
+        );
+
+        await db.insert(handymanServices).values(serviceRecords);
+        console.log("✅ Created handyman services:", services);
+      }
 
       console.log(
         "✅ Created handyman profile (services not saved - schema limitation)"

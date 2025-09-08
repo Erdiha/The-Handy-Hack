@@ -208,6 +208,7 @@ export function PaymentButton({
             jobId={jobId}
             jobTitle={jobTitle}
             jobAmount={jobAmount}
+            handymanId={jobAcceptedBy}
             onPaymentSuccess={handlePaymentSuccess}
           />
         </>
