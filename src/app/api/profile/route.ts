@@ -114,3 +114,52 @@ export async function GET() {
     );
   }
 }
+export async function PATCH(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = parseInt(session.user.id);
+    const updates = await request.json();
+
+    // Update basic user info
+    const { name, email, phone, bio, neighborhood } = updates;
+
+    await db
+      .update(users)
+      .set({
+        ...(name && { name }),
+        ...(email && { email }),
+        ...(phone && { phone }),
+      })
+      .where(eq(users.id, userId));
+
+    // For handymen, update profile
+    if (session.user.role === "handyman" && (bio || neighborhood)) {
+      await db
+        .update(handymanProfiles)
+        .set({
+          ...(bio && { bio }),
+          updatedAt: new Date(),
+        })
+        .where(eq(handymanProfiles.userId, userId));
+    }
+    const updatedUser = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    return NextResponse.json({
+      success: true,
+      user: updatedUser[0],
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to update profile" },
+      { status: 500 }
+    );
+  }
+}
