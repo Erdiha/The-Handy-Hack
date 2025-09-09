@@ -752,8 +752,8 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] bg-gradient-to-br from-orange-50 to-orange-100">
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 lg:py-8">
+    <div className="min-h-[calc(100vh-5rem)] bg-orange-50">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 lg:py-8 mt-10">
         <div className="grid lg:grid-cols-12 gap-2 lg:gap-6 h-[calc(100vh-8rem)] lg:h-[calc(100vh-12rem)]">
           {/* LEFT: Conversations List */}
           <motion.div

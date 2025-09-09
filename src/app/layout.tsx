@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Navbar } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 import { AuthSessionProvider } from "@/components/providers/SessionProviders";
 import "./globals.css";
 import { NotificationProvider } from "@/contexts/NotificationContext";
@@ -23,7 +24,8 @@ export default function RootLayout({
         <AuthSessionProvider>
           <NotificationProvider>
             <Navbar />
-            {children}
+            <main className="min-h-[calc(100vh-5rem)]">{children}</main>
+            <Footer />
           </NotificationProvider>
         </AuthSessionProvider>
       </body>

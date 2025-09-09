@@ -340,9 +340,9 @@ export default function SearchPage() {
 
   return (
     <>
-      <div className="min-h-screen">
+      <div className="min-h-[calc(100vh-5rem)]">
         {/* Hero Section */}
-        <div className="relative z-[999999]">
+        <div className="relative z-10">
           <div className="absolute inset-0"></div>
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-8 pb-6 sm:pb-12 md:pt-16 md:pb-16">
             <motion.div
@@ -602,9 +602,9 @@ export default function SearchPage() {
                 )}
               </div>
             </div>
-
+            <div className="mt-10  flex w-full h-2 bg-orange-100  md:hidden" />
             {/* Sidebar */}
-            <div className="lg:col-span-1 xl:col-span-1">
+            <div className="lg:col-span-1 xl:col-span-1 md:mt-22 mt-10">
               <div className="sticky top-4 sm:top-6 space-y-4 sm:space-y-6">
                 {/* Community Stats */}
                 <motion.div

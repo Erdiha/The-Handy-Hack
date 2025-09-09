@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { jobs, users } from "@/lib/schema";
 import { withAuth, AuthenticatedRequest } from "@/lib/security";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 // POST - Create new job
 export const POST = withAuth(async (request: AuthenticatedRequest) => {
@@ -64,15 +64,27 @@ export const POST = withAuth(async (request: AuthenticatedRequest) => {
   }
 });
 
-// GET - Fetch all jobs with real customer names
 export const GET = withAuth(async (request: AuthenticatedRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get("category");
     const urgency = searchParams.get("urgency");
 
-    // Query jobs with real customer names
-    const query = db
+    // Build WHERE conditions for database query
+    const whereConditions = [eq(jobs.status, "open"), isNull(jobs.acceptedBy)];
+
+    // Add category filter to database query
+    if (category && category !== "All Categories") {
+      whereConditions.push(eq(jobs.category, category));
+    }
+
+    // Add urgency filter to database query
+    if (urgency && urgency !== "All") {
+      whereConditions.push(eq(jobs.urgency, urgency));
+    }
+
+    // Query jobs with filters applied at database level
+    const filteredJobs = await db
       .select({
         id: jobs.id,
         title: jobs.title,
@@ -91,25 +103,11 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
         paymentStatus: jobs.paymentStatus,
       })
       .from(jobs)
-      .innerJoin(users, eq(jobs.postedBy, users.id));
+      .innerJoin(users, eq(jobs.postedBy, users.id))
+      .where(and(...whereConditions));
 
-    // Execute query
-    const allJobs = await query;
-
-    // Filter for open jobs only
-    let filteredJobs = allJobs.filter(
-      (job) => job.status === "open" && job.acceptedBy === null
-    );
-
-    if (category && category !== "All Categories") {
-      filteredJobs = filteredJobs.filter((job) => job.category === category);
-    }
-
-    if (urgency && urgency !== "All") {
-      filteredJobs = filteredJobs.filter((job) => job.urgency === urgency);
-    }
-
-    // Sort emergency jobs to the top
+    // Remove the JavaScript filtering - no longer needed!
+    // Just sort emergency jobs to the top
     filteredJobs.sort((a, b) => {
       if (a.urgency === "emergency" && b.urgency !== "emergency") return -1;
       if (b.urgency === "emergency" && a.urgency !== "emergency") return 1;

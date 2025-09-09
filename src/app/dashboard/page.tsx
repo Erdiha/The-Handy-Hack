@@ -135,7 +135,7 @@ export default function DashboardPage() {
   const firstName = session.user.name?.split(" ")[0] || "User";
 
   return (
-    <div className="min-h-[calc(100vh-5rem)]  md:pt-16 bg-orange-50">
+    <div className="min-h-[calc(100vh-5rem)] md:mt-20 mt-10 bg-orange-50">
       {isHandyman ? (
         <HandymanDashboard
           profile={profile}
