@@ -5,6 +5,13 @@ import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
+interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  actionUrl?: string;
+  isRead: boolean;
+}
 interface UserProfile {
   id: string;
   email: string;
@@ -48,6 +55,29 @@ export default function SettingsPage() {
       fetchProfile();
     }
   }, [session]);
+
+  // In app/layout.tsx or dashboard component
+  useEffect(() => {
+    const checkNotifications = async () => {
+      const response = await fetch("/api/notifications?unreadOnly=true");
+      const data = await response.json();
+
+      // Check for new notifications and display them
+      if (data.notifications?.length > 0) {
+        data.notifications.forEach((notif: Notification) => {
+          if (Notification.permission === "granted") {
+            new Notification(notif.title, {
+              body: notif.body,
+              icon: "/favicon.ico",
+            });
+          }
+        });
+      }
+    };
+
+    const interval = setInterval(checkNotifications, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchProfile = async () => {
     try {
@@ -1020,7 +1050,31 @@ function NotificationsContent() {
     fetchPreferences();
   }, []);
 
-  const handleToggle = (key: string) => {
+  const requestBrowserPermission = async () => {
+    if (!("Notification" in window)) {
+      alert("This browser doesn't support notifications");
+      return false;
+    }
+
+    const permission = await Notification.requestPermission();
+    return permission === "granted";
+  };
+
+  const handleToggle = async (key: string) => {
+    if (key === "browser" && !preferences.browser) {
+      // Request browser notification permission
+      if (!("Notification" in window)) {
+        alert("This browser doesn't support notifications");
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        alert("Browser notifications denied");
+        return;
+      }
+    }
+
     setPreferences((prev) => ({
       ...prev,
       [key]: !prev[key as keyof typeof prev],

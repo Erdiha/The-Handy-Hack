@@ -158,14 +158,14 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* ✅ Debug Info (remove this in production) */}
+          {/* ✅ Debug Info (remove this in production)
           {process.env.NODE_ENV === "development" && (
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs">
               <strong>Debug:</strong> Step {step}, Can proceed:{" "}
               {canProceed().toString()}, Hourly rate: &quot;{formData.hourlyRate}&quot;,
               Loading: {loading.toString()}
             </div>
-          )}
+          )} */}
 
           {/* Step Content */}
           {step === 1 && (

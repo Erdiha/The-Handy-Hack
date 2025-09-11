@@ -49,3 +49,42 @@ export async function GET() {
     );
   }
 }
+export async function POST(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { jobId, problemType, description } = await request.json();
+
+    if (!problemType || !description) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    // Insert ticket
+    await db.insert(supportTickets).values({
+      jobId: jobId || null,
+      jobTitle: jobId ? `Job #${jobId}` : "General Issue",
+      customerEmail: session.user.email!,
+      handymanName: "",
+      problemType,
+      description,
+      status: "open",
+      priority: "normal",
+      reportedBy: Number(session.user.id),
+      createdAt: new Date(),
+    });
+
+    return NextResponse.json({ success: true, message: "Ticket submitted" });
+  } catch (error) {
+    console.error("Support ticket create error:", error);
+    return NextResponse.json(
+      { error: "Failed to submit ticket" },
+      { status: 500 }
+    );
+  }
+}

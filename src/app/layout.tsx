@@ -5,6 +5,7 @@ import { Footer } from "@/components/layout/Footer";
 import { AuthSessionProvider } from "@/components/providers/SessionProviders";
 import "./globals.css";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { NotificationPoller } from "@/components/NotificationPoller";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,6 +24,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <AuthSessionProvider>
           <NotificationProvider>
+            <NotificationPoller />
             <Navbar />
             <main className="min-h-[calc(100vh-5rem)]">{children}</main>
             <Footer />

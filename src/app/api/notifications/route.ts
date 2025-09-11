@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { withAuth, AuthenticatedRequest } from "@/lib/security";
 import { db } from "@/lib/db";
-import { notifications, messages, conversations, users } from "@/lib/schema";
 import { eq, and, or, isNull, desc, count } from "drizzle-orm";
-
+import {
+  notifications,
+  messages,
+  conversations,
+  users,
+  notificationPreferences,
+} from "@/lib/schema";
 // GET - Fetch notifications for current user
 export const GET = withAuth(async (request: AuthenticatedRequest) => {
   try {
@@ -111,6 +116,42 @@ export const GET = withAuth(async (request: AuthenticatedRequest) => {
     console.error("Error fetching notifications:", error);
     return NextResponse.json(
       { error: "Failed to fetch notifications" },
+      { status: 500 }
+    );
+  }
+});
+
+// ADD - POST method to create notifications
+export const POST = withAuth(async (request: AuthenticatedRequest) => {
+  try {
+    const {
+      userId,
+      type,
+      title,
+      body,
+      actionUrl,
+      conversationId,
+      jobId,
+      priority,
+    } = await request.json();
+
+    // Save to database
+    await db.insert(notifications).values({
+      userId,
+      type,
+      title,
+      body,
+      actionUrl,
+      conversationId,
+      jobId,
+      priority: priority || "normal",
+      createdAt: new Date(),
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to create notification" },
       { status: 500 }
     );
   }

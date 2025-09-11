@@ -1,24 +1,28 @@
 // src/lib/security.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export interface AuthenticatedRequest extends NextRequest {
   user?: {
     id: string;
     email: string;
     name: string;
-    role: 'customer' | 'handyman';
+    role: "customer" | "handyman";
   };
 }
 
-export function withAuth(handler: (req: AuthenticatedRequest) => Promise<NextResponse>) {
-  return async function(request: NextRequest): Promise<NextResponse> {
-    const session = await getServerSession(authOptions);
-    
+export function withAuth(
+  handler: (req: AuthenticatedRequest) => Promise<NextResponse>
+) {
+  return async function (request: NextRequest): Promise<NextResponse> {
+    // Pass request context to getServerSession
+    const session = await getServerSession({ req: request, ...authOptions });
+
     if (!session?.user) {
+      console.log("🚫 No session found in withAuth"); // Debug log
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: "Authentication required" },
         { status: 401 }
       );
     }
@@ -27,7 +31,7 @@ export function withAuth(handler: (req: AuthenticatedRequest) => Promise<NextRes
       id: session.user.id,
       email: session.user.email,
       name: session.user.name,
-      role: session.user.role as 'customer' | 'handyman'
+      role: session.user.role as "customer" | "handyman",
     };
 
     return handler(request as AuthenticatedRequest);

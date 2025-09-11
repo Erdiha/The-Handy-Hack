@@ -57,6 +57,13 @@
       "when": 1757091543376,
       "tag": "0007_peaceful_colleen_wing",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1757527270522,
+      "tag": "0008_daily_kree",
+      "breakpoints": true
     }
   ]
 }

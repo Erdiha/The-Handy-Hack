@@ -105,6 +105,30 @@ export default function AdminSupportPage() {
       </div>
     );
   }
+  const handleMarkResolved = async (ticketId: number) => {
+    setResolving(ticketId);
+    try {
+      const response = await fetch("/api/admin/support-tickets", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticketId,
+          status: "resolved",
+          resolution: "Help Center ticket resolved by admin",
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setMessage("Help ticket marked as resolved");
+        fetchSupportTickets();
+      }
+    } catch (error) {
+      setMessage("Failed to resolve ticket");
+    } finally {
+      setResolving(null);
+    }
+  };
 
   if (!isAdmin) {
     return null; // This shouldn't happen due to redirect, but just in case
@@ -236,11 +260,10 @@ export default function AdminSupportPage() {
                       </span>
                     </div>
                   </div>
-
                   {/* Job Details */}
                   <div className="bg-slate-50 rounded-lg p-4 mb-4">
                     <h4 className="font-medium text-slate-800 mb-2">
-                      Job Details
+                      {ticket.jobId ? "Job Details" : "Ticket Details"}
                     </h4>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
@@ -249,15 +272,16 @@ export default function AdminSupportPage() {
                           {ticket.customerEmail}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-slate-500">Handyman:</span>
-                        <span className="ml-2 font-medium">
-                          {ticket.handymanName}
-                        </span>
-                      </div>
+                      {ticket.handymanName && (
+                        <div>
+                          <span className="text-slate-500">Handyman:</span>
+                          <span className="ml-2 font-medium">
+                            {ticket.handymanName}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
-
                   {/* Problem Description */}
                   <div className="mb-6">
                     <h4 className="font-medium text-slate-800 mb-2">
@@ -268,27 +292,43 @@ export default function AdminSupportPage() {
                     </p>
                   </div>
 
-                  {/* Resolution Actions */}
-                  <div className="flex space-x-3 pt-4 border-t border-slate-200">
-                    <Button
-                      onClick={() => handleResolveTicket(ticket.id, "refund")}
-                      disabled={resolving === ticket.id}
-                      className="flex-1 bg-red-500 hover:bg-red-600 text-white"
-                    >
-                      {resolving === ticket.id
-                        ? "Processing..."
-                        : "Refund Customer"}
-                    </Button>
-                    <Button
-                      onClick={() => handleResolveTicket(ticket.id, "release")}
-                      disabled={resolving === ticket.id}
-                      className="flex-1 bg-green-500 hover:bg-green-600 text-white"
-                    >
-                      {resolving === ticket.id
-                        ? "Processing..."
-                        : "Release Payment"}
-                    </Button>
-                  </div>
+                  {/* Resolution Actions - Only show for job-related tickets */}
+                  {ticket.jobId && (
+                    <div className="flex space-x-3 pt-4 border-t border-slate-200">
+                      <Button
+                        onClick={() => handleResolveTicket(ticket.id, "refund")}
+                        disabled={resolving === ticket.id}
+                        className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                      >
+                        {resolving === ticket.id
+                          ? "Processing..."
+                          : "Refund Customer"}
+                      </Button>
+                      <Button
+                        onClick={() =>
+                          handleResolveTicket(ticket.id, "release")
+                        }
+                        disabled={resolving === ticket.id}
+                        className="flex-1 bg-green-500 hover:bg-green-600 text-white"
+                      >
+                        {resolving === ticket.id
+                          ? "Processing..."
+                          : "Release Payment"}
+                      </Button>
+                    </div>
+                  )}
+                  {/* Help Center tickets - Different actions */}
+                  {!ticket.jobId && (
+                    <div className="flex space-x-3 pt-4 border-t border-slate-200">
+                      <Button
+                        onClick={() => handleMarkResolved(ticket.id)}
+                        disabled={resolving === ticket.id}
+                        className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
+                      >
+                        Mark as Resolved
+                      </Button>
+                    </div>
+                  )}
                 </motion.div>
               ))}
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
@@ -24,6 +24,23 @@ export default function PostJobPage() {
     location: "",
     // photos: [] as string[],
   });
+
+  useEffect(() => {
+    if (!session) {
+      router.push("/auth/signin?redirect=/post-job");
+    }
+  }, [session, router]);
+
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-orange-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Enhanced validation functions
   const validateTitle = (title: string): string => {

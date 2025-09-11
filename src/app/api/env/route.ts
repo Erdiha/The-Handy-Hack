@@ -11,5 +11,6 @@ export function GET() {
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY ? "OK" : "MISSING",
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET ? "OK" : "MISSING",
     CLOUDINARY_URL: process.env.CLOUDINARY_URL ? "OK" : "MISSING",
+    RESEND_API_KEY: process.env.RESEND_API_KEY ? "OK" : "MISSING",
   });
 }

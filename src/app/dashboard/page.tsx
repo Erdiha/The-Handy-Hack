@@ -88,7 +88,9 @@ export default function DashboardPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [onboardingCheckComplete, setOnboardingCheckComplete] = useState(false);
 
+  // First check authentication, then onboarding
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/auth/signin");
@@ -105,30 +107,45 @@ export default function DashboardPage() {
       const response = await fetch("/api/profile");
       if (response.ok) {
         const data = await response.json();
-        setProfile(data);
 
+        // If onboarding is incomplete, redirect immediately
         if (!data.hasCompletedOnboarding) {
           router.push("/onboarding");
+          return;
         }
+
+        // Only set profile and show dashboard if onboarding is complete
+        setProfile(data);
+        setOnboardingCheckComplete(true);
+      } else {
+        console.error("Failed to fetch profile");
+        setOnboardingCheckComplete(true);
       }
     } catch (error) {
       console.error("Failed to check profile:", error);
+      setOnboardingCheckComplete(true);
     } finally {
       setLoading(false);
     }
   };
 
-  if (status === "loading" || loading) {
+  // Show loading until both auth and onboarding checks are complete
+  if (status === "loading" || loading || !onboardingCheckComplete) {
     return (
       <div className="min-h-[calc(100vh-5rem)] bg-orange-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600 font-medium">Loading dashboard</p>
+          <p className="text-slate-600 font-medium">
+            {status === "loading"
+              ? "Loading..."
+              : "Setting up your dashboard..."}
+          </p>
         </div>
       </div>
     );
   }
 
+  // Only render if we have a session, profile, and onboarding is complete
   if (!session || !profile) return null;
 
   const isHandyman = session.user.role === "handyman";
@@ -162,7 +179,7 @@ function HandymanDashboard({
   user: SessionUser;
   firstName: string;
 }) {
-  const [myJobs, setMyJobs] = useState<Job[]>([]); // Proper typing
+  const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -201,16 +218,15 @@ function HandymanDashboard({
       bufferTime: 30,
     });
   const [currentServices, setCurrentServices] = useState<string[]>(
-    profile.services || ["Plumbing", "Electrical"] // Default services
+    profile.services || ["Plumbing", "Electrical"]
   );
-  // Add these to your existing state
 
   const [toast, setToast] = useState({
     isVisible: false,
     message: "",
     type: "success" as "success" | "error",
   });
-  // ADD THESE:
+
   const [earnings, setEarnings] = useState({
     today: 0,
     week: 0,
@@ -223,7 +239,7 @@ function HandymanDashboard({
   useEffect(() => {
     fetchMyJobs();
     fetchEarnings();
-    fetchAvailabilityStatus(); // ADD THIS
+    fetchAvailabilityStatus();
   }, []);
 
   const fetchCompletedJobs = async () => {
@@ -347,6 +363,7 @@ function HandymanDashboard({
       setJobActionLoading(false);
     }
   };
+
   const fetchAvailabilityStatus = async () => {
     try {
       console.log("🔍 [CUSTOMER] Fetching availability status...");
@@ -395,6 +412,7 @@ function HandymanDashboard({
       setJobsLoading(false);
     }
   };
+
   const todayEarnings = 245;
   const weeklyGoal = 800;
   const nextJob = {
@@ -420,7 +438,6 @@ function HandymanDashboard({
 
         setIsAvailable(returnedAvailability);
 
-        // Refresh jobs list
         await fetchMyJobs();
 
         setToast({
@@ -429,7 +446,6 @@ function HandymanDashboard({
           type: "success",
         });
 
-        // Fix: Use the same timeout cleanup pattern
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
         }
@@ -464,9 +480,7 @@ function HandymanDashboard({
       type: "success",
     });
   };
-  // Add this ref at the top of HandymanDashboard component
 
-  // Replace handleAvailabilityToggle function
   const handleAvailabilityToggle = async () => {
     if (isAvailable === null) return;
 
@@ -500,7 +514,6 @@ function HandymanDashboard({
     }
   };
 
-  // Add cleanup useEffect
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
@@ -508,7 +521,7 @@ function HandymanDashboard({
       }
     };
   }, []);
-  // Add this component inside HandymanDashboard function, before the return statement
+
   const JobItem = ({ job }: { job: Job }) => (
     <div className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-gray-100 mb-5">
       <div>
@@ -580,6 +593,7 @@ function HandymanDashboard({
       </div>
     </div>
   );
+
   return (
     <div className="max-w-6xl mx-auto px-6 py-8 bg-orange-50">
       {/* Header */}
@@ -598,53 +612,6 @@ function HandymanDashboard({
               Let&apos;s make today productive in {profile.neighborhood}
             </p>
           </div>
-          {/* <div className="flex items-center space-x-3">
-            {isAvailable === null ? (
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-gray-300 rounded-full animate-pulse"></div>
-                <span className="text-slate-500 font-medium">
-                  Loading status...
-                </span>
-              </div>
-            ) : (
-              <>
-                <div
-                  className={`w-3 h-3 rounded-full ${
-                    isAvailable ? "bg-green-500" : "bg-gray-400"
-                  }`}
-                ></div>
-                <span className="text-slate-600 font-medium">
-                  {isAvailable ? "Available" : "Offline"}
-                </span>
-                <Button
-                  onClick={handleAvailabilityToggle}
-                  disabled={availabilityLoading || isAvailable === null}
-                  variant="outline"
-                  className="ml-4 border-slate-300 text-slate-700 hover:bg-slate-100"
-                >
-                  {availabilityLoading
-                    ? "Updating..."
-                    : isAvailable
-                    ? "Go Offline"
-                    : "Go Online"}
-                </Button>
-              </>
-            )}
-          </div> */}
-
-          {/* FUTURE: Scheduling feature - commented out for now
-<div className="flex items-center space-x-2 pl-4 border-l border-slate-300">
-  <label className="flex items-center space-x-2 cursor-pointer">
-    <input
-      type="checkbox"
-      checked={useScheduledAvailability}
-      onChange={(e) => setUseScheduledAvailability(e.target.checked)}
-      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-    />
-    <span className="text-slate-600 font-medium">Use Schedule</span>
-  </label>
-</div>
-*/}
         </div>
       </motion.div>
 
@@ -789,27 +756,9 @@ function HandymanDashboard({
               >
                 Manage Services ({currentServices.length})
               </Button>
-
-              {/* FUTURE: Set Availability scheduling feature - commented out for now
-  <Button
-    onClick={() => setIsAvailabilityModalOpen(true)}
-    disabled={!useScheduledAvailability}
-    variant="outline"
-    className={`w-full justify-start ${
-      useScheduledAvailability
-        ? "border-slate-300 text-slate-700 hover:bg-slate-50"
-        : "border-slate-200 text-slate-400 cursor-not-allowed"
-    }`}
-  >
-    {useScheduledAvailability
-      ? `Set Availability (${currentAvailability.responseTime})`
-      : "Set Availability (Enable schedule first)"}
-  </Button>
-  */}
             </div>
           </div>
 
-          {/* This Week Summary */}
           {/* This Week Summary */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <h3 className="font-semibold text-slate-900 mb-4">This Week</h3>
@@ -1065,11 +1014,11 @@ function CustomerDashboard({
 
   const fetchCustomerJobs = async () => {
     try {
-      const response = await fetch(`/api/customer/jobs?status=all`); // Always fetch all
+      const response = await fetch(`/api/customer/jobs?status=all`);
       const data = await response.json();
       if (data.success) {
-        setAllCustomerJobs(data.jobs); // Store full dataset
-        setCustomerJobs(data.jobs); // Initialize display data
+        setAllCustomerJobs(data.jobs);
+        setCustomerJobs(data.jobs);
       }
     } catch (error) {
       console.error("Failed to fetch customer jobs:", error);
@@ -1094,7 +1043,7 @@ function CustomerDashboard({
 
   useEffect(() => {
     fetchStats();
-    fetchCustomerJobs(); // Add this line
+    fetchCustomerJobs();
     fetchTrustedHandymen();
     fetchNeighborhoodStats();
   }, []);
@@ -1102,13 +1051,6 @@ function CustomerDashboard({
   useEffect(() => {
     fetchAvailabilityStatus();
   }, []);
-
-  // useEffect(() => {
-  //   if (activeTab) {
-  //     setJobsLoading(true);
-  //     fetchCustomerJobs();
-  //   }
-  // }, [activeTab]);
 
   // Filter jobs based on active tab
   const getFilteredJobs = () => {
@@ -1162,39 +1104,6 @@ function CustomerDashboard({
               Find trusted help in {profile.neighborhood}
             </p>
           </div>
-
-          {/* Customer availability toggle */}
-          {/* <div className=" items-center space-x-3 hidden">
-            {isAvailable === null ? (
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-gray-300 rounded-full animate-pulse"></div>
-                <span className="text-slate-500 font-medium">Loading...</span>
-              </div>
-            ) : (
-              <>
-                <div
-                  className={`w-3 h-3 rounded-full ${
-                    isAvailable ? "bg-green-500" : "bg-gray-400"
-                  }`}
-                ></div>
-                <span className="text-slate-600 font-medium">
-                  {isAvailable ? "Available" : "Offline"}
-                </span>
-                <Button
-                  onClick={handleAvailabilityToggle}
-                  disabled={availabilityLoading}
-                  variant="outline"
-                  className="ml-4 border-slate-300 text-slate-700 hover:bg-slate-100"
-                >
-                  {availabilityLoading
-                    ? "Updating..."
-                    : isAvailable
-                    ? "Go Offline"
-                    : "Go Online"}
-                </Button>
-              </>
-            )}
-          </div> */}
         </div>
       </motion.div>
       <motion.div
@@ -1298,7 +1207,7 @@ function CustomerDashboard({
                         </p>
                       )}
 
-                      {/* ADD PAYMENT BUTTON HERE */}
+                      {/* Payment Button */}
                       <div
                         className="mt-3"
                         onClick={(e) => e.stopPropagation()}
@@ -1308,7 +1217,7 @@ function CustomerDashboard({
                           jobTitle={job.title}
                           jobAmount={parseFloat(job.budgetAmount || "0")}
                           currentUserId={user.id}
-                          jobPosterId={user.id} // Customer is always the poster
+                          jobPosterId={user.id}
                           jobAcceptedBy={job.handyman?.id}
                           jobStatus={job.status}
                           paymentStatus={job.paymentStatus || "unpaid"}
@@ -1401,13 +1310,13 @@ function CustomerDashboard({
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">This Month</span>
                 <span className="font-semibold text-slate-900">
-                  {statsLoading ? "..." : `$${stats.thisMonthSpending}`}
+                  {statsLoading ? "..." : `${stats.thisMonthSpending}`}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">Saved vs TaskRabbit</span>
                 <span className="font-semibold text-green-600">
-                  {statsLoading ? "..." : `~$${stats.estimatedSavings}`}
+                  {statsLoading ? "..." : `~${stats.estimatedSavings}`}
                 </span>
               </div>
             </div>

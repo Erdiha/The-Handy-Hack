@@ -24,9 +24,9 @@ export async function GET() {
       .limit(1);
 
     const defaultPreferences = {
-      browser: true,
-      sound: true,
-      email: true,
+      browser: false,
+      sound: false,
+      email: false,
       sms: false,
       quietHoursEnabled: false,
       quietHoursStart: "22:00",

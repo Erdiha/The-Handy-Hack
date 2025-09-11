@@ -33,6 +33,11 @@ export const users = pgTable("users", {
     false
   ),
 
+  //verification
+  isVerified: boolean("is_verified").default(false),
+  verificationToken: text("verification_token"),
+  verificationExpires: timestamp("verification_expires"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
