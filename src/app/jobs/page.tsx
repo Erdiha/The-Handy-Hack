@@ -415,23 +415,18 @@ export default function JobsPage() {
               <div className="hidden lg:block h-[70px]"></div>
 
               {/* Pro Tips */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-                className="bg-orange-500 rounded-2xl shadow-lg p-6 text-white hover:shadow-xl transition-all duration-300 "
-              >
-                <div className="text-center">
-                  <div className="text-3xl mb-3 text-left">💡</div>
-                  <h3 className="text-xl font-bold mb-2 text-left">Pro Tips</h3>
-                  <div className="space-y-2 text-sm text-orange-100  text-left">
+              <div className="bg-orange-500 rounded-2xl shadow-lg p-6 text-white hover:shadow-xl transition-all duration-300">
+                <div>
+                  <div className="text-3xl mb-3">💡</div>
+                  <h3 className="text-xl font-bold mb-2">Pro Tips</h3>
+                  <div className="space-y-2 text-sm text-orange-100">
                     <p>• Respond quickly to get more jobs</p>
                     <p>• Include photos in your proposals</p>
                     <p>• Ask clarifying questions</p>
                     <p>• Be transparent about timeline</p>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { serviceCategories } from "@/lib/services";
 
 interface Notification {
   id: string;
@@ -818,20 +819,9 @@ function ServicesContent({ profile }: { profile: UserProfile }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const AVAILABLE_SERVICES = [
-    "Plumbing",
-    "Electrical",
-    "Painting",
-    "Carpentry",
-    "Appliance Repair",
-    "Furniture Assembly",
-    "Home Cleaning",
-    "Landscaping",
-    "Tile Work",
-    "Drywall Repair",
-    "General Repair",
-    "Other",
-  ];
+  const AVAILABLE_SERVICES = serviceCategories.flatMap((category) =>
+    category.services.map((service) => service.name)
+  );
 
   const toggleService = (service: string) => {
     setSelectedServices((prev) =>
@@ -842,7 +832,7 @@ function ServicesContent({ profile }: { profile: UserProfile }) {
   };
 
   const handleServicesUpdate = async () => {
-    if (selectedServices.length < 2) {
+    if (selectedServices.length < 1) {
       setMessage("❌ Please select at least 2 services");
       return;
     }
@@ -997,13 +987,13 @@ function ServicesContent({ profile }: { profile: UserProfile }) {
         <div className="flex items-center justify-between">
           <p className="text-sm text-slate-600">
             Selected: {selectedServices.length} services
-            {selectedServices.length < 2 && (
+            {selectedServices.length < 1 && (
               <span className="text-red-600 ml-1">(Minimum 2 required)</span>
             )}
           </p>
           <button
             onClick={handleServicesUpdate}
-            disabled={saving || selectedServices.length < 2}
+            disabled={saving || selectedServices.length < 1}
             className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
           >
             {saving ? "Saving..." : "Save Services"}

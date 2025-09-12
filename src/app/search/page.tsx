@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { Handyman } from "@/types/handyman";
 import { EmergencyAlertModal } from "@/components/modals/EmergencyAlertModal";
+import { allServices } from "@/lib/services";
 
 // Custom Select Component
 interface SelectOption {
@@ -196,19 +197,7 @@ export default function SearchPage() {
   const [neighborhoodsLoading, setNeighborhoodsLoading] = useState(true);
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
 
-  const services = [
-    "All Services",
-    "Plumbing",
-    "Electrical",
-    "Painting",
-    "Carpentry",
-    "Appliance Repair",
-    "Furniture Assembly",
-    "Home Cleaning",
-    "Landscaping",
-    "Tile Work",
-    "Drywall Repair",
-  ];
+  const services = allServices;
 
   useEffect(() => {
     fetchHandymen();

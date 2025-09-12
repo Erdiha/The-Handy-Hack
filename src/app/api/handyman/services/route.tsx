@@ -26,7 +26,7 @@ export const PATCH = withAuth(async (request: AuthenticatedRequest) => {
     }
 
     // Validate input
-    if (!Array.isArray(services) || services.length < 2) {
+    if (!Array.isArray(services) || services.length < 1) {
       return NextResponse.json(
         { error: "Please select at least 2 services" },
         { status: 400 }

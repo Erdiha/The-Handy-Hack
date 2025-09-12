@@ -5,13 +5,14 @@ import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+import { ResponsiveSelect } from "@/components/ui/ResponsiveSelect";
+import { serviceCategories } from "@/lib/services";
+import { AddressAutocomplete } from "@/components/ui/AddressInput";
 
 export default function PostJobPage() {
   const { data: session } = useSession();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  // const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   const [formData, setFormData] = useState({
@@ -21,8 +22,7 @@ export default function PostJobPage() {
     urgency: "flexible",
     budget: "hour",
     budgetAmount: "",
-    location: "",
-    // photos: [] as string[],
+    location: "", // This will be synced with address autocomplete
   });
 
   useEffect(() => {
@@ -94,6 +94,11 @@ export default function PostJobPage() {
     return "";
   };
 
+  const validateLocation = (location: string): string => {
+    if (!location.trim()) return "Job location is required";
+    return "";
+  };
+
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
 
@@ -103,92 +108,14 @@ export default function PostJobPage() {
     }
   };
 
-  // Enhanced photo upload
-  // const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  //   const files = Array.from(e.target.files || []);
-  //   if (files.length === 0) return;
-
-  //   // Validate files
-  //   const maxSize = 5 * 1024 * 1024; // 5MB
-  //   const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-
-  //   const validFiles = files.filter((file) => {
-  //     if (file.size > maxSize) {
-  //       alert(`${file.name} is too large. Max size is 5MB.`);
-  //       return false;
-  //     }
-  //     if (!allowedTypes.includes(file.type)) {
-  //       alert(`${file.name} is not a supported image format.`);
-  //       return false;
-  //     }
-  //     return true;
-  //   });
-
-  //   if (validFiles.length === 0) return;
-
-  //   setUploading(true);
-
-  //   try {
-  //     console.log("📸 Starting upload of", validFiles.length, "files");
-
-  //     const uploadedUrls: string[] = [];
-
-  //     for (const file of validFiles) {
-  //       const timestamp = Date.now();
-  //       const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-  //       const filename = `job-photos/${timestamp}-${cleanName}`;
-
-  //       console.log("📤 Uploading:", filename);
-
-  //       const response = await fetch(
-  //         `/api/upload?filename=${encodeURIComponent(filename)}`,
-  //         {
-  //           method: "POST",
-  //           body: file,
-  //         }
-  //       );
-
-  //       if (!response.ok) {
-  //         throw new Error(`Upload failed: ${response.statusText}`);
-  //       }
-
-  //       const result = await response.json();
-
-  //       if (!result.success) {
-  //         throw new Error(result.error || "Upload failed");
-  //       }
-
-  //       uploadedUrls.push(result.url);
-  //       console.log("✅ Uploaded:", result.url);
-  //     }
-
-  //     // Update formData with new photo URLs
-  //     setFormData((prev) => ({
-  //       ...prev,
-  //       photos: [...prev.photos, ...uploadedUrls],
-  //     }));
-
-  //     console.log("🎉 All uploads complete");
-  //   } catch (error) {
-  //     console.error("❌ Upload failed:", error);
-  //     alert(
-  //       `Failed to upload photos: ${
-  //         error instanceof Error ? error.message : "Unknown error"
-  //       }`
-  //     );
-  //   } finally {
-  //     setUploading(false);
-  //     // Clear the input
-  //     e.target.value = "";
-  //   }
-  // };
-
-  // const removePhoto = (index: number) => {
-  //   setFormData((prev) => ({
-  //     ...prev,
-  //     photos: prev.photos.filter((_, i) => i !== index),
-  //   }));
-  // };
+  // Handle address change and sync with form data
+  const handleAddressChange = (address: string) => {
+    setFormData((prev) => ({ ...prev, location: address }));
+    // Clear location error when address is updated
+    if (errors.location) {
+      setErrors((prev) => ({ ...prev, location: "" }));
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,18 +125,26 @@ export default function PostJobPage() {
     const descError = validateDescription(formData.description);
     const budgetError = validateBudget(formData.budget, formData.budgetAmount);
     const categoryError = validateCategory(formData.category);
+    const locationError = validateLocation(formData.location);
 
     const newErrors = {
       title: titleError,
       description: descError,
       budget: budgetError,
       category: categoryError,
+      location: locationError,
     };
 
     setErrors(newErrors);
 
     // Stop if there are errors
-    if (titleError || descError || budgetError || categoryError) {
+    if (
+      titleError ||
+      descError ||
+      budgetError ||
+      categoryError ||
+      locationError
+    ) {
       console.log("❌ Form validation failed");
       return;
     }
@@ -299,76 +234,85 @@ export default function PostJobPage() {
                 )}
               </div>
 
-              {/* Enhanced Category Selection */}
-              <div>
-                <label className="block text-lg font-semibold text-slate-800 mb-3">
-                  What type of work is this?
-                </label>
+              {/* Category Selection */}
+              <ResponsiveSelect
+                label="What type of work is this?"
+                value={formData.category}
+                onChange={(value) => handleInputChange("category", value)}
+                options={[
+                  { value: "", label: "Select a service type..." },
+                  ...serviceCategories.flatMap((category) =>
+                    category.services.map((service) => ({
+                      value: service.name,
+                      label: `${category.icon} ${service.name}`,
+                    }))
+                  ),
+                ]}
+                placeholder="Choose your service type..."
+                error={errors.category}
+                searchable={true}
+              />
 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {[
-                    { name: "Plumbing", icon: "🔧", color: "blue" },
-                    { name: "Electrical", icon: "⚡", color: "yellow" },
-                    { name: "Painting", icon: "🎨", color: "purple" },
-                    { name: "Carpentry", icon: "🔨", color: "orange" },
-                    { name: "Appliance Repair", icon: "🔌", color: "green" },
-                    { name: "Furniture Assembly", icon: "🪑", color: "brown" },
-                    { name: "Home Cleaning", icon: "🧹", color: "pink" },
-                    { name: "Landscaping", icon: "🌱", color: "green" },
-                    { name: "Tile Work", icon: "⬜", color: "gray" },
-                    { name: "Drywall Repair", icon: "🧱", color: "red" },
-                    { name: "General Repair", icon: "🛠️", color: "slate" },
-                    { name: "Other", icon: "❓", color: "gray" },
-                  ].map((category) => (
-                    <button
-                      key={category.name}
-                      type="button"
-                      onClick={() =>
-                        handleInputChange("category", category.name)
-                      }
-                      className={`p-4 rounded-xl border-2 transition-all duration-200 text-center hover:scale-105 ${
-                        formData.category === category.name
-                          ? "border-orange-500 bg-orange-50 shadow-lg"
-                          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-md"
-                      }`}
-                    >
-                      <div className="text-2xl mb-2">{category.icon}</div>
-                      <div
-                        className={`text-sm font-medium ${
-                          formData.category === category.name
-                            ? "text-orange-700"
-                            : "text-slate-700"
-                        }`}
-                      >
-                        {category.name}
+              {/* Show selected service description */}
+              {formData.category && formData.category !== "Other" && (
+                <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                  {(() => {
+                    const selectedService = serviceCategories
+                      .flatMap((cat) => cat.services)
+                      .find((service) => service.name === formData.category);
+
+                    return selectedService ? (
+                      <div className="flex items-start space-x-3">
+                        <div className="text-orange-600">
+                          <svg
+                            className="w-5 h-5"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm text-slate-700 mb-1">
+                            <span className="font-medium">
+                              {selectedService.name}:
+                            </span>{" "}
+                            {selectedService.description}
+                          </p>
+                          {selectedService.suggestedRate && (
+                            <p className="text-xs text-slate-500">
+                              💡 Typical rate: {selectedService.suggestedRate}
+                            </p>
+                          )}
+                          {selectedService.requiresVerification && (
+                            <p className="text-xs text-blue-600 font-medium">
+                              🛡️ Background check recommended for this service
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </button>
-                  ))}
+                    ) : null;
+                  })()}
                 </div>
-
-                {errors.category && (
-                  <p className="mt-2 text-sm text-red-600">
-                    ⚠️ {errors.category}
-                  </p>
-                )}
-              </div>
+              )}
 
               {/* Urgency */}
-              <div>
-                <label className="block text-lg font-semibold text-slate-800 mb-3">
-                  When do you need this done?
-                </label>
-                <select
-                  value={formData.urgency}
-                  onChange={(e) => handleInputChange("urgency", e.target.value)}
-                  className="w-full px-4 bg-white py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
-                >
-                  <option value="asap">ASAP (Today/Tomorrow)</option>
-                  <option value="week">This week</option>
-                  <option value="flexible">I&apos;m flexible</option>
-                  <option value="emergency">Emergency (Now!)</option>
-                </select>
-              </div>
+              <ResponsiveSelect
+                label="When do you need this done?"
+                value={formData.urgency}
+                onChange={(value) => handleInputChange("urgency", value)}
+                options={[
+                  { value: "asap", label: "ASAP (Today/Tomorrow)" },
+                  { value: "week", label: "This week" },
+                  { value: "flexible", label: "I'm flexible" },
+                  { value: "emergency", label: "Emergency (Now!)" },
+                ]}
+                placeholder="Select timing..."
+              />
 
               {/* Description */}
               <div>
@@ -415,22 +359,22 @@ export default function PostJobPage() {
                 <label className="block text-lg font-semibold text-slate-800 mb-3">
                   Budget
                 </label>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <select
+                <div className="grid sm:grid-cols-2 gap-4 items-end">
+                  <ResponsiveSelect
+                    label=""
                     value={formData.budget}
-                    onChange={(e) =>
-                      handleInputChange("budget", e.target.value)
-                    }
-                    className="w-full px-4 py-4 text-lg border border-slate-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 bg-white"
-                  >
-                    <option value="hour">Hourly rate</option>
-                    <option value="fixed">Fixed price</option>
-                    <option value="quote">Get quotes</option>
-                  </select>
+                    onChange={(value) => handleInputChange("budget", value)}
+                    options={[
+                      { value: "hour", label: "Hourly rate" },
+                      { value: "fixed", label: "Fixed price" },
+                      { value: "quote", label: "Get quotes" },
+                    ]}
+                    placeholder="Select budget type..."
+                  />
 
                   {formData.budget !== "quote" && (
                     <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-lg">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-lg z-10">
                         $
                       </span>
                       <input
@@ -452,115 +396,22 @@ export default function PostJobPage() {
                 )}
               </div>
 
-              {/* Location */}
+              {/* Location - FIXED: Now properly synced */}
               <div>
-                <label className="block text-lg font-semibold text-slate-800 mb-3">
-                  Location
-                </label>
-                <input
-                  type="text"
+                <AddressAutocomplete
+                  label="Job Location"
                   value={formData.location}
-                  onChange={(e) =>
-                    handleInputChange("location", e.target.value)
-                  }
-                  placeholder="Your address or neighborhood"
-                  className="w-full px-4 py-4 text-lg border border-slate-200 bg-white rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
+                  onChange={handleAddressChange}
+                  onAddressSelected={(addressData) => {
+                    // Use the standardized formatted address
+                    handleAddressChange(addressData.standardized);
+                  }}
                   required
+                  placeholder="Where do you need help?"
+                  error={errors.location}
                 />
               </div>
-
-              {/* Photo Upload */}
-              {/* <div> */}
-              {/* <label className="block text-lg font-semibold text-slate-800 mb-3">
-                  Photos (Optional)
-                </label> */}
-              {/* <div className="space-y-4"> */}
-              {/* Upload Area */}
-              {/* <div
-                    className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-200 cursor-pointer group ${
-                      uploading
-                        ? "border-orange-400 bg-orange-50"
-                        : "border-slate-300 hover:border-orange-400 hover:bg-orange-50"
-                    }`}
-                  >
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                      id="photo-upload"
-                      disabled={uploading}
-                    />
-                    <label
-                      htmlFor="photo-upload"
-                      className={
-                        uploading ? "cursor-not-allowed" : "cursor-pointer"
-                      }
-                    >
-                      <div
-                        className={`text-5xl mb-4 transition-transform duration-200 ${
-                          uploading ? "animate-pulse" : "group-hover:scale-110"
-                        }`}
-                      >
-                        {uploading ? "⏳" : "📸"}
-                      </div>
-                      <p className="font-semibold text-slate-700 mb-2">
-                        {uploading
-                          ? "Uploading photos..."
-                          : "Add photos to help pros understand your job"}
-                      </p>
-                      <p className="text-sm text-slate-500">
-                        {uploading
-                          ? "Please wait"
-                          : "Click to upload or drag and drop"}
-                      </p>
-                    </label>
-                  </div> */}
-
-              {/* Photo Preview */}
-              {/* {formData.photos.length > 0 && (
-                    <div>
-                      <p className="text-sm text-slate-600 mb-3">
-                        {formData.photos.length} photo(s) uploaded
-                      </p>
-                      <div className="grid grid-cols-4 gap-4">
-                        {formData.photos.map((photoUrl, index) => (
-                          <div key={index} className="relative group">
-                            <Image
-                              src={photoUrl}
-                              alt={`Upload ${index + 1}`}
-                              width={96}
-                              height={96}
-                              className="w-full h-24 object-cover rounded-xl border border-slate-200"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removePhoto(index)}
-                              className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-sm hover:bg-red-600 transition-colors duration-200"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )} */}
-
-              {/* Upload Status */}
-              {/* {uploading && (
-                    <div className="text-center py-4">
-                      <div className="text-orange-600 font-medium">
-                        Uploading photos...
-                      </div>
-                      <div className="w-full bg-orange-200 rounded-full h-2 mt-2">
-                        <div className="bg-orange-500 h-2 rounded-full animate-pulse w-1/2"></div>
-                      </div>
-                    </div>
-                  )} */}
-              {/* </div> */}
             </div>
-            {/* </div> */}
 
             {/* Submit */}
             <div className="bg-gradient-to-r from-orange-50 to-orange-100 px-8 py-6 border-t border-orange-200">
@@ -589,48 +440,6 @@ export default function PostJobPage() {
                     className="px-8 py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
                   >
                     {loading ? "Posting..." : "Post Job & Get Quotes"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={async () => {
-                      setLoading(true);
-                      try {
-                        const testJob = {
-                          title: "Test Job - Fix Faucet",
-                          description:
-                            "This is a hardcoded test job for testing purposes. Please ignore.",
-                          category: "Plumbing",
-                          urgency: "flexible",
-                          budget: "hour",
-                          budgetAmount: "75",
-                          location: "123 Test Street, Testville",
-                        };
-
-                        const response = await fetch("/api/jobs", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify(testJob),
-                        });
-
-                        const data = await response.json();
-
-                        if (data.success) {
-                          alert("✅ Test job created successfully!");
-                          router.push("/jobs?posted=true");
-                        } else {
-                          alert("❌ Failed to create test job: " + data.error);
-                        }
-                      } catch (error) {
-                        console.error(error);
-                        alert("❌ Error creating test job.");
-                      } finally {
-                        setLoading(false);
-                      }
-                    }}
-                    className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-                  >
-                    Create Test Job
                   </Button>
                 </div>
               </div>

@@ -17,6 +17,8 @@ import {
 // CORE USER SYSTEM
 // ================================
 
+// Update your users table in schema.ts to include these new fields:
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
@@ -26,6 +28,16 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("customer"),
   isAvailable: boolean("is_available").default(true),
 
+  // NEW: Verification fields
+  backgroundCheckCompleted: boolean("background_check_completed").default(
+    false
+  ),
+  addressVerified: boolean("address_verified").default(false),
+  fullAddress: text("full_address"),
+  verificationDocuments: jsonb("verification_documents").default({}),
+  latitude: decimal("latitude", { precision: 10, scale: 8 }),
+  longitude: decimal("longitude", { precision: 11, scale: 8 }),
+
   // Stripe Integration
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
   stripeConnectAccountId: varchar("stripe_connect_account_id", { length: 255 }),
@@ -33,14 +45,13 @@ export const users = pgTable("users", {
     false
   ),
 
-  //verification
+  // Email verification (existing)
   isVerified: boolean("is_verified").default(false),
   verificationToken: text("verification_token"),
   verificationExpires: timestamp("verification_expires"),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
-
 export const neighborhoods = pgTable("neighborhoods", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
