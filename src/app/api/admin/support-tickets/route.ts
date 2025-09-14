@@ -88,3 +88,33 @@ export async function POST(request: Request) {
     );
   }
 }
+
+// Add this PATCH export to your existing route.ts file
+export async function PATCH(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email || session.user.email !== "erdiha@gmail.com") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { ticketId, status, resolution } = await request.json();
+    const adminId = parseInt(session.user.id, 10);
+
+    await db
+      .update(supportTickets)
+      .set({
+        status,
+        resolution,
+        resolvedBy: adminId,
+        resolvedAt: new Date(),
+      })
+      .where(eq(supportTickets.id, ticketId));
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to update ticket" },
+      { status: 500 }
+    );
+  }
+}

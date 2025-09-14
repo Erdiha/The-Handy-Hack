@@ -1,10 +1,22 @@
 // app/settings/page.tsx - Mobile-Responsive Settings Page
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { serviceCategories } from "@/lib/services";
+import {
+  ResponsiveSelect,
+  SelectOption,
+} from "@/components/ui/ResponsiveSelect";
+
+interface NeighborhoodData {
+  id: number;
+  name: string;
+  slug: string;
+  city: string;
+  state: string;
+}
 
 interface Notification {
   id: string;
@@ -88,8 +100,8 @@ export default function SettingsPage() {
       if (response.ok) {
         setProfile({
           id: session!.user.id,
-          email: session!.user.email,
-          name: session!.user.name,
+          email: data.email, //  From API response (fresh from DB)
+          name: data.name, //  From API response (fresh from DB)
           role: session!.user.role as "customer" | "handyman",
           phone: data.phone,
           bio: data.bio,
@@ -187,7 +199,9 @@ export default function SettingsPage() {
           {/* Content */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 lg:p-8 overflow-y-auto max-h-[70vh] h-fit">
-              {activeTab === "profile" && <ProfileContent profile={profile} />}
+              {activeTab === "profile" && (
+                <ProfileContent profile={profile} setProfile={setProfile} />
+              )}
               {activeTab === "notifications" && <NotificationsContent />}
               {activeTab === "account" && <AccountContent />}
               {activeTab === "services" && profile.role === "handyman" && (
@@ -214,37 +228,81 @@ export default function SettingsPage() {
 }
 
 // Profile Content Component with Password Change
-function ProfileContent({ profile }: { profile: UserProfile }) {
+function ProfileContent({
+  profile,
+  setProfile,
+}: {
+  profile: UserProfile;
+  setProfile: React.Dispatch<React.SetStateAction<UserProfile | null>>;
+}) {
   const [editing, setEditing] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  const editingFieldRef = useRef<HTMLDivElement>(null);
 
   const handleEdit = (field: string, currentValue: string) => {
     setEditing(field);
     setValues({ [field]: currentValue || "" });
   };
 
+  // Auto-scroll when editing starts
+  useEffect(() => {
+    if (editing && editingFieldRef.current) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => {
+        editingFieldRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center", // Centers the element in viewport
+          inline: "nearest",
+        });
+      }, 100);
+    }
+  }, [editing]);
+
   const handleSave = async (field: string) => {
     setSaving(true);
     try {
-      const response = await fetch("/api/profile", {
+      let apiEndpoint;
+      let requestBody;
+
+      // Route to correct API endpoint based on field
+      if (field === "hourlyRate") {
+        // Use the same endpoint that works in dashboard
+        apiEndpoint = "/api/handyman/update-rate";
+        requestBody = { hourlyRate: values[field] };
+      } else {
+        apiEndpoint = "/api/profile";
+        requestBody = { [field]: values[field] };
+      }
+
+      const response = await fetch(apiEndpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: values[field] }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
 
       if (response.ok && data.success) {
-        setMessage("✅ Profile updated successfully!");
+        setMessage("Profile updated successfully!");
         setEditing(null);
-        setTimeout(() => window.location.reload(), 1000);
+
+        // Update local profile state immediately
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                [field]: values[field],
+              }
+            : null
+        );
       } else {
-        setMessage(`❌ ${data.error || "Failed to update profile"}`);
+        setMessage(`${data.error || "Failed to update profile"}`);
       }
     } catch (error) {
-      setMessage("❌ Error updating profile");
+      setMessage("Error updating profile");
       console.error("Profile update error:", error);
     } finally {
       setSaving(false);
@@ -320,7 +378,10 @@ function ProfileContent({ profile }: { profile: UserProfile }) {
       </div>
 
       {/* Profile Fields */}
-      <div className="space-y-4">
+      <div
+        ref={editing === "name" ? editingFieldRef : null}
+        className="space-y-4"
+      >
         <EditableField
           label="Name"
           field="name"
@@ -333,52 +394,55 @@ function ProfileContent({ profile }: { profile: UserProfile }) {
           onCancel={handleCancel}
           setValues={setValues}
         />
+        <div ref={editing === "email" ? editingFieldRef : null}>
+          <EditableField
+            label="Email"
+            field="email"
+            value={profile.email}
+            editing={editing}
+            values={values}
+            saving={saving}
+            onEdit={handleEdit}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            setValues={setValues}
+            type="email"
+          />
+        </div>
+        <div ref={editing === "phone" ? editingFieldRef : null}>
+          <EditableField
+            label="Phone"
+            field="phone"
+            value={profile.phone || ""}
+            editing={editing}
+            values={values}
+            saving={saving}
+            onEdit={handleEdit}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            setValues={setValues}
+            type="tel"
+            placeholder="(555) 123-4567"
+          />
+        </div>
 
-        <EditableField
-          label="Email"
-          field="email"
-          value={profile.email}
-          editing={editing}
-          values={values}
-          saving={saving}
-          onEdit={handleEdit}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          setValues={setValues}
-          type="email"
-        />
-
-        <EditableField
-          label="Phone"
-          field="phone"
-          value={profile.phone || ""}
-          editing={editing}
-          values={values}
-          saving={saving}
-          onEdit={handleEdit}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          setValues={setValues}
-          type="tel"
-          placeholder="(555) 123-4567"
-        />
-
-        <EditableField
-          label="Neighborhood"
-          field="neighborhood"
-          value={profile.neighborhood || ""}
-          editing={editing}
-          values={values}
-          saving={saving}
-          onEdit={handleEdit}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          setValues={setValues}
-          placeholder="Enter your neighborhood"
-        />
-
+        <div ref={editing === "neighborhood" ? editingFieldRef : null}>
+          <EditableNeighborhoodField
+            profile={profile}
+            setProfile={setProfile} // Add this prop
+            editing={editing}
+            saving={saving}
+            onEdit={handleEdit}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            setValues={setValues}
+          />
+        </div>
         {/* Password Change Section */}
-        <div className="group p-3 sm:p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+        <div
+          ref={editing === "password" ? editingFieldRef : null}
+          className="group p-3 sm:p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors"
+        >
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -497,42 +561,208 @@ function ProfileContent({ profile }: { profile: UserProfile }) {
             </div>
           </div>
         </div>
-
         {profile.role === "handyman" && (
           <>
-            <EditableField
-              label="Bio"
-              field="bio"
-              value={profile.bio || ""}
-              editing={editing}
-              values={values}
-              saving={saving}
-              onEdit={handleEdit}
-              onSave={handleSave}
-              onCancel={handleCancel}
-              setValues={setValues}
-              isTextarea={true}
-              placeholder="Tell customers about your experience..."
-            />
+            <div ref={editing === "bio" ? editingFieldRef : null}>
+              <EditableField
+                label="Bio"
+                field="bio"
+                value={profile.bio || ""}
+                editing={editing}
+                values={values}
+                saving={saving}
+                onEdit={handleEdit}
+                onSave={handleSave}
+                onCancel={handleCancel}
+                setValues={setValues}
+                isTextarea={true}
+                placeholder="Tell customers about your experience..."
+              />
+            </div>
 
-            <EditableField
-              label="Hourly Rate"
-              field="hourlyRate"
-              value={profile.hourlyRate || ""}
-              editing={editing}
-              values={values}
-              saving={saving}
-              onEdit={handleEdit}
-              onSave={handleSave}
-              onCancel={handleCancel}
-              setValues={setValues}
-              type="number"
-              placeholder="50"
-              prefix="$"
-              suffix="/hr"
-            />
+            <div ref={editing === "hourlyRate" ? editingFieldRef : null}>
+              <EditableField
+                label="Hourly Rate"
+                field="hourlyRate"
+                value={profile.hourlyRate || ""}
+                editing={editing}
+                values={values}
+                saving={saving}
+                onEdit={handleEdit}
+                onSave={handleSave}
+                onCancel={handleCancel}
+                setValues={setValues}
+                type="number"
+                placeholder="50"
+                prefix="$"
+                suffix="/hr"
+              />
+            </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Update the EditableNeighborhoodField component signature:
+function EditableNeighborhoodField({
+  profile,
+  setProfile, // Add this prop
+  editing,
+  saving,
+  onEdit,
+  onSave,
+  onCancel,
+  setValues,
+}: {
+  profile: UserProfile;
+  setProfile: React.Dispatch<React.SetStateAction<UserProfile | null>>; // Add this type
+  editing: string | null;
+  saving: boolean;
+  onEdit: (field: string, value: string) => void;
+  onSave: (field: string) => void;
+  onCancel: () => void;
+  setValues: (values: Record<string, string>) => void;
+}) {
+  const [neighborhoods, setNeighborhoods] = useState<SelectOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedValue, setSelectedValue] = useState("");
+
+  const isEditing = editing === "neighborhood";
+
+  useEffect(() => {
+    if (isEditing && neighborhoods.length === 0) {
+      fetchNeighborhoods();
+    }
+  }, [isEditing, neighborhoods.length]);
+
+  const fetchNeighborhoods = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/neighborhoods");
+      const data: { success: boolean; neighborhoods: NeighborhoodData[] } =
+        await response.json();
+
+      if (data.success && data.neighborhoods) {
+        const options: SelectOption[] = data.neighborhoods.map(
+          (neighborhood: NeighborhoodData) => ({
+            value:
+              profile.role === "handyman"
+                ? neighborhood.id.toString()
+                : neighborhood.name,
+            label: `${neighborhood.name}, ${neighborhood.city}`,
+          })
+        );
+        setNeighborhoods(options);
+      }
+    } catch (error) {
+      console.error("Failed to fetch neighborhoods:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNeighborhoodChange = (value: string) => {
+    setSelectedValue(value);
+    setValues({ neighborhood: value });
+  };
+
+  const handleNeighborhoodSave = async () => {
+    try {
+      await onSave("neighborhood");
+
+      // Update local profile with the display name
+      if (selectedValue && neighborhoods.length > 0) {
+        const selectedOption = neighborhoods.find(
+          (option) => option.value === selectedValue
+        );
+        if (selectedOption) {
+          const neighborhoodName = selectedOption.label.split(",")[0];
+
+          setProfile((prev: UserProfile | null) =>
+            prev
+              ? {
+                  ...prev,
+                  neighborhood: neighborhoodName,
+                }
+              : null
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Failed to save neighborhood:", error);
+    }
+  };
+
+  const getCurrentDisplayValue = (): string => {
+    if (!profile.neighborhood) return "Not set";
+    return profile.neighborhood;
+  };
+
+  // Rest of the component remains the same...
+  return (
+    <div className="group p-3 sm:p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+      {/* ... existing JSX ... */}
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            Neighborhood
+          </label>
+
+          {isEditing ? (
+            <div className="space-y-3">
+              <ResponsiveSelect
+                label=""
+                value={selectedValue}
+                onChange={handleNeighborhoodChange}
+                options={neighborhoods}
+                placeholder={
+                  loading ? "Loading neighborhoods..." : "Select neighborhood"
+                }
+                disabled={loading || saving}
+                searchable={true}
+              />
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={handleNeighborhoodSave}
+                  disabled={saving || !selectedValue || loading}
+                  className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm font-medium"
+                >
+                  {saving ? "Saving..." : "Save"}
+                </button>
+                <button
+                  onClick={onCancel}
+                  disabled={saving}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50 text-sm font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <p className="text-slate-900 text-sm sm:text-base">
+                <span
+                  className={
+                    profile.neighborhood ? "" : "text-slate-400 italic"
+                  }
+                >
+                  {getCurrentDisplayValue()}
+                </span>
+              </p>
+              <button
+                onClick={() =>
+                  onEdit("neighborhood", profile.neighborhood || "")
+                }
+                className="opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity px-3 py-1 text-sm text-orange-600 hover:text-orange-700 font-medium"
+              >
+                Edit
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

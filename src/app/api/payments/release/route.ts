@@ -58,7 +58,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Check payment status
-    if (payment.paymentStatus !== "escrowed") {
+    if (
+      payment.paymentStatus !== "escrowed" &&
+      payment.paymentStatus !== "pending"
+    ) {
       return NextResponse.json(
         {
           error: `Cannot release payment with status: ${payment.paymentStatus}`,

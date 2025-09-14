@@ -21,17 +21,17 @@ export function Footer() {
         { href: "/search", label: "Find Help" },
         { href: "/post-job", label: "Post a Job" },
         { href: "/how-it-works", label: "How It Works" },
-        { href: "/pricing", label: "Pricing" },
+        { href: "/how-it-works#pricing", label: "Pricing" },
       ],
     },
     {
       id: "company",
       title: "Company",
       links: [
-        { href: "/about", label: "About Us" },
-        { href: "/careers", label: "Careers" },
-        { href: "/press", label: "Press" },
-        { href: "/contact", label: "Contact" },
+        { href: "/company?tab=about", label: "About Us" },
+        { href: "/company?tab=careers", label: "Careers" },
+        { href: "/company?tab=press", label: "Press" },
+        // { href: "/contact", label: "Contact" }, // Keep as separate page
       ],
     },
     {
@@ -39,9 +39,9 @@ export function Footer() {
       title: "Support",
       links: [
         { href: "/help", label: "Help Center" },
-        { href: "/safety", label: "Safety & Trust" },
-        { href: "/report-problem", label: "Report a Problem" },
-        { href: "/insurance", label: "Insurance Coverage" },
+        { href: "/help?tab=account", label: "Safety & Trust" },
+        { href: "/help?tab=contact&type=safety", label: "Report a Problem" },
+        { href: "/help?tab=account#insurance", label: "Insurance Coverage" },
       ],
     },
     {
@@ -51,7 +51,7 @@ export function Footer() {
         { href: "/legal/terms", label: "Terms of Service" },
         { href: "/legal/privacy", label: "Privacy Policy" },
         { href: "/legal/community-guidelines", label: "Community Guidelines" },
-        { href: "/legal/cookies", label: "Cookie Policy" },
+        // { href: "/legal/cookies", label: "Cookie Policy" },
       ],
     },
   ];

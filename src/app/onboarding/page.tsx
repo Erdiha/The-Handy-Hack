@@ -6,6 +6,19 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { OnboardingStepProps } from "@/types/onboarding";
+import { AddressAutocomplete } from "@/components/ui/AddressInput";
+import { PhoneInput } from "@/components/ui/PhoneInput";
+import { validatePhoneNumber } from "@/lib/PhoneValidation";
+interface AddressData {
+  original: string;
+  standardized: string;
+  confidence: "high" | "medium" | "low";
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  latitude?: number;
+  longitude?: number;
+}
 
 export default function OnboardingPage() {
   const { data: session, status } = useSession();
@@ -56,33 +69,31 @@ export default function OnboardingPage() {
     setError("");
 
     try {
-      console.log("🚀 Starting onboarding completion..."); // Debug log
-      console.log("📝 Form data:", formData); // Debug log
+      console.log("🚀 Starting onboarding completion...");
+      console.log("📋 Form data:", formData);
 
       const response = await fetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
-          role: session.user.role, // ✅ Add role to the request
+          role: session.user.role,
         }),
       });
 
-      console.log("📡 Response status:", response.status); // Debug log
+      console.log("📡 Response status:", response.status);
 
       if (response.ok) {
         const data = await response.json();
-        console.log("✅ Success response:", data); // Debug log
-
-        // ✅ Force redirect with replace to prevent back button issues
+        console.log("✅ Success response:", data);
         window.location.href = "/dashboard";
       } else {
         const errorData = await response.json();
-        console.error("❌ Error response:", errorData); // Debug log
+        console.error("❌ Error response:", errorData);
         setError(errorData.error || `Server error: ${response.status}`);
       }
     } catch (error) {
-      console.error("💥 Network error:", error); // Debug log
+      console.error("💥 Network error:", error);
       setError(
         `Network error: ${
           error instanceof Error ? error.message : "Unknown error"
@@ -96,17 +107,23 @@ export default function OnboardingPage() {
   const canProceed = () => {
     switch (step) {
       case 1:
-        return formData.neighborhood.length > 0;
+        return (
+          formData.neighborhood.length > 0 && formData.address.trim().length > 0
+        );
       case 2:
-        return isHandyman
-          ? formData.phone.length > 0 && formData.bio.length > 0
-          : formData.phone.length > 0;
+        if (isHandyman) {
+          const phoneValid = validatePhoneNumber(formData.phone).isValid;
+          return phoneValid && formData.bio.length > 0;
+        } else {
+          const phoneValid = validatePhoneNumber(formData.phone).isValid;
+          return phoneValid;
+        }
       case 3:
         return formData.services.length >= 2;
       case 4:
         return (
           formData.hourlyRate.length > 0 && parseFloat(formData.hourlyRate) > 0
-        ); // ✅ Also check if it's a valid number
+        );
       default:
         return false;
     }
@@ -114,7 +131,6 @@ export default function OnboardingPage() {
 
   const handleInputChange = (field: string, value: string | string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-    // Clear error when user makes changes
     if (error) setError("");
   };
 
@@ -147,7 +163,7 @@ export default function OnboardingPage() {
             </div>
           </div>
 
-          {/* ✅ Error Display */}
+          {/* Error Display */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
               <div className="flex items-start">
@@ -157,15 +173,6 @@ export default function OnboardingPage() {
               </div>
             </div>
           )}
-
-          {/* ✅ Debug Info (remove this in production)
-          {process.env.NODE_ENV === "development" && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs">
-              <strong>Debug:</strong> Step {step}, Can proceed:{" "}
-              {canProceed().toString()}, Hourly rate: &quot;{formData.hourlyRate}&quot;,
-              Loading: {loading.toString()}
-            </div>
-          )} */}
 
           {/* Step Content */}
           {step === 1 && (
@@ -231,7 +238,7 @@ export default function OnboardingPage() {
   );
 }
 
-// ✅ All your original step components remain exactly the same
+// ✅ Enhanced LocationStep using existing AddressAutocomplete component
 function LocationStep({ formData, onChange, isHandyman }: OnboardingStepProps) {
   const neighborhoods = [
     "Highland Park",
@@ -243,6 +250,17 @@ function LocationStep({ formData, onChange, isHandyman }: OnboardingStepProps) {
     "Los Feliz",
     "Atwater Village",
   ];
+
+  // Handle address change from AddressAutocomplete
+  const handleAddressChange = (address: string) => {
+    onChange("address", address);
+  };
+
+  // Handle address selection from dropdown
+  const handleAddressSelected = (addressData: AddressData) => {
+    // Use the standardized formatted address
+    onChange("address", addressData.standardized);
+  };
 
   return (
     <motion.div
@@ -259,12 +277,13 @@ function LocationStep({ formData, onChange, isHandyman }: OnboardingStepProps) {
         </h2>
         <p className="text-slate-600">
           {isHandyman
-            ? "Select neighborhoods you serve"
-            : "Choose your neighborhood to find local help"}
+            ? "Select your neighborhood and provide your exact address"
+            : "Choose your neighborhood and provide your address for local matches"}
         </p>
       </div>
 
       <div className="space-y-6">
+        {/* Neighborhood Selection */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-3">
             Select Neighborhood
@@ -286,17 +305,55 @@ function LocationStep({ formData, onChange, isHandyman }: OnboardingStepProps) {
           </div>
         </div>
 
+        {/* ✅ Address Input using existing AddressAutocomplete component */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Street Address (Optional)
-          </label>
-          <input
-            type="text"
+          <AddressAutocomplete
+            label="Street Address"
             value={formData.address}
-            onChange={(e) => onChange("address", e.target.value)}
-            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
-            placeholder="1234 Main St, Los Angeles, CA"
+            onChange={handleAddressChange}
+            onAddressSelected={handleAddressSelected}
+            required={true}
+            placeholder={
+              isHandyman ? "Where do you provide services?" : "Your address"
+            }
+            error={
+              formData.address.trim().length === 0
+                ? "Address is required to continue"
+                : ""
+            }
           />
+          <p className="text-xs text-slate-500 mt-1">
+            💡 This helps us match you with{" "}
+            {isHandyman ? "nearby customers" : "local handymen"}
+          </p>
+        </div>
+
+        {/* Visual indicator showing both fields are required */}
+        <div className="bg-orange-50 p-4 rounded-xl border border-orange-200">
+          <div className="flex items-start space-x-3">
+            <div className="text-orange-600">
+              <svg
+                className="w-5 h-5 mt-0.5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm text-slate-700 font-medium">
+                Both fields required
+              </p>
+              <p className="text-xs text-slate-600">
+                Select your neighborhood and provide your exact address to
+                continue
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -320,18 +377,13 @@ function CustomerCompleteStep({ formData, onChange }: OnboardingStepProps) {
         </p>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">
-          Phone Number
-        </label>
-        <input
-          type="tel"
-          value={formData.phone}
-          onChange={(e) => onChange("phone", e.target.value)}
-          className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
-          placeholder="(555) 123-4567"
-        />
-      </div>
+      <PhoneInput
+        label="Phone Number"
+        value={formData.phone}
+        onChange={(value) => onChange("phone", value)}
+        required={true}
+        placeholder="(555) 123-4567"
+      />
     </motion.div>
   );
 }
@@ -354,18 +406,13 @@ function HandymanProfileStep({ formData, onChange }: OnboardingStepProps) {
       </div>
 
       <div className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Phone Number
-          </label>
-          <input
-            type="tel"
-            value={formData.phone}
-            onChange={(e) => onChange("phone", e.target.value)}
-            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200"
-            placeholder="(555) 123-4567"
-          />
-        </div>
+        <PhoneInput
+          label="Phone Number"
+          value={formData.phone}
+          onChange={(value) => onChange("phone", value)}
+          required={true}
+          placeholder="(555) 123-4567"
+        />
 
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -378,6 +425,9 @@ function HandymanProfileStep({ formData, onChange }: OnboardingStepProps) {
             className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all duration-200 resize-none"
             placeholder="Hi! I'm a local handyman with 5+ years experience. I specialize in..."
           />
+          <p className="text-xs text-slate-500 mt-1">
+            Tell customers about your experience and specialties
+          </p>
         </div>
       </div>
     </motion.div>

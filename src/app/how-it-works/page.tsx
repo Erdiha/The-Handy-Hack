@@ -183,10 +183,12 @@ export default function HowItWorksPage() {
           >
             <Link href="/search">
               <Button
+                variant="gradient"
                 size="lg"
-                className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-8 py-4 text-lg rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                colorScheme="orange"
+                rightIcon="→"
               >
-                Find Local Help Now →
+                Find Local Help Now
               </Button>
             </Link>
           </motion.div>
@@ -280,19 +282,23 @@ export default function HowItWorksPage() {
             {session ? (
               <Link href="/dashboard">
                 <Button
+                  variant="gradient"
                   size="lg"
-                  className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-4 text-lg rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                  colorScheme="blue"
+                  rightIcon="→"
                 >
-                  Go to Dashboard →
+                  Go to Dashboard
                 </Button>
               </Link>
             ) : (
               <Link href="/auth/signup">
                 <Button
+                  variant="gradient"
                   size="lg"
-                  className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-4 text-lg rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                  colorScheme="blue"
+                  rightIcon="→"
                 >
-                  Start Earning Today →
+                  Start Earning Today
                 </Button>
               </Link>
             )}
@@ -301,7 +307,7 @@ export default function HowItWorksPage() {
       </section>
 
       {/* Why Choose Us - Competitive Advantages */}
-      <section className="py-16 md:py-24 bg-white">
+      <section id="pricing" className="py-16 md:py-24 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             className="text-center mb-16 md:mb-20"
@@ -337,7 +343,7 @@ export default function HowItWorksPage() {
                 icon: "💸",
                 title: "Fair Fees",
                 description:
-                  "We charge 8% + 5% vs competitors' 15-30%. More money stays in your pocket.",
+                  "We charge 8% + 2% vs competitors' 15-30%. More money stays in your pocket.",
                 bgColor: "bg-green-50",
                 borderColor: "border-green-200",
                 iconBg: "bg-green-100",
@@ -510,8 +516,10 @@ export default function HowItWorksPage() {
             <div className="flex flex-col sm:flex-row gap-4 lg:gap-6 justify-center items-center">
               <Link href="/search">
                 <Button
-                  size="lg"
-                  className="bg-white text-orange-600 hover:bg-orange-50 font-bold px-8 py-4 text-lg rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 min-w-[200px]"
+                  variant="white"
+                  size="xl"
+                  colorScheme="white"
+                  fullWidth={false}
                 >
                   Find Local Help
                 </Button>
@@ -520,9 +528,10 @@ export default function HowItWorksPage() {
               {session ? (
                 <Link href="/dashboard">
                   <Button
-                    size="lg"
                     variant="outline"
-                    className="border-2 border-white text-white hover:bg-white hover:text-orange-600 font-bold px-8 py-4 text-lg rounded-2xl transition-all duration-300 transform hover:-translate-y-1 min-w-[200px]"
+                    size="xl"
+                    colorScheme="white"
+                    fullWidth={false}
                   >
                     Go to Dashboard
                   </Button>
@@ -530,9 +539,10 @@ export default function HowItWorksPage() {
               ) : (
                 <Link href="/auth/signup">
                   <Button
-                    size="lg"
                     variant="outline"
-                    className="border-2 border-white text-white hover:bg-white hover:text-orange-600 font-bold px-8 py-4 text-lg rounded-2xl transition-all duration-300 transform hover:-translate-y-1 min-w-[200px]"
+                    size="xl"
+                    colorScheme="white"
+                    fullWidth={false}
                   >
                     Offer Your Services
                   </Button>

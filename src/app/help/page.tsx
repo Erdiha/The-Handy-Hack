@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 
 interface FAQItem {
   id: string;
@@ -7,6 +8,7 @@ interface FAQItem {
   answer: string;
   category: string;
 }
+
 interface User {
   id: string;
   name: string;
@@ -15,7 +17,16 @@ interface User {
 }
 
 export default function HelpCenterPage() {
-  const [activeTab, setActiveTab] = useState("getting-started");
+  const searchParams = useSearchParams();
+
+  // Get URL parameters
+  const tabParam = searchParams.get("tab");
+  const typeParam = searchParams.get("type");
+  const hashParam =
+    typeof window !== "undefined" ? window.location.hash.replace("#", "") : "";
+
+  // Set initial state based on URL parameters
+  const [activeTab, setActiveTab] = useState(tabParam || "getting-started");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedFAQ, setExpandedFAQ] = useState<string | null>(null);
   const [user] = useState({
@@ -24,6 +35,30 @@ export default function HelpCenterPage() {
     role: "customer",
     email: "john@example.com",
   });
+
+  // Handle URL parameter changes and hash navigation
+  useEffect(() => {
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+
+    // Handle hash-based navigation (like #insurance)
+    const hashParam = window.location.hash.replace("#", "");
+    if (
+      hashParam === "insurance" &&
+      (tabParam === "account" || activeTab === "account")
+    ) {
+      setTimeout(() => {
+        const insuranceElement = document.getElementById("insurance-section");
+        if (insuranceElement) {
+          insuranceElement.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }
+      }, 100);
+    }
+  }, [tabParam, activeTab]);
 
   const tabs = [
     { key: "getting-started", label: "Getting Started", icon: "🚀" },
@@ -66,13 +101,6 @@ export default function HelpCenterPage() {
         "Click 'Post Job' in your dashboard, describe your task, set your budget, add photos if needed, and submit. Local handymen will see your job and can accept it. You'll get notifications when someone is interested.",
       category: "customers",
     },
-    // {
-    //   id: "5",
-    //   question: "How do I find a handyman for immediate help?",
-    //   answer:
-    //     "Use our 'Emergency Help' feature for urgent issues. Click the red emergency button on your dashboard, describe the problem, and available handymen will be notified immediately. Emergency rates apply for immediate response.",
-    //   category: "customers",
-    // },
     {
       id: "6",
       question: "What if I'm not satisfied with the work?",
@@ -130,7 +158,7 @@ export default function HelpCenterPage() {
       id: "13",
       question: "What are your fees?",
       answer:
-        "Customers are charged an 8% service fee in addition to the job cost. Handymen retain 95% of their earnings, with a 5% platform fee applied. These fees support secure payment processing, Handy Hack staff salaries, and ongoing platform maintenance.",
+        "Customers are charged an 8% service fee in addition to the job cost. Handymen retain 95% of their earnings, with a 5% platform fee applied. These fees support secure payment processing, platform maintenance, and customer support.",
       category: "payments",
     },
     {
@@ -148,12 +176,33 @@ export default function HelpCenterPage() {
       category: "payments",
     },
 
-    // Account & Safety
+    // Account & Safety (Enhanced with safety content)
     {
-      id: "16",
+      id: "safety-1",
       question: "How do you verify handymen?",
       answer:
-        "All handymen undergo background checks and provide references. We verify their identity, insurance, and professional credentials. Look for the 'Verified' badge on profiles.",
+        "All handymen undergo comprehensive background checks including identity verification, criminal history screening, and reference checks. We verify their insurance, professional credentials, and work history. Look for the 'Verified' badge on profiles.",
+      category: "account",
+    },
+    {
+      id: "safety-2",
+      question: "What safety measures are in place?",
+      answer:
+        "We implement multiple safety layers: background checks for all pros, secure payment escrow, identity verification, insurance requirements, community reviews from verified neighbors, and 24/7 support for safety concerns.",
+      category: "account",
+    },
+    {
+      id: "safety-3",
+      question: "How do I report unsafe behavior?",
+      answer:
+        "If you encounter unsafe behavior, immediately report it through our platform or contact our safety team at safety@thehandyhack.com. For emergencies, always contact local authorities first, then report to us.",
+      category: "account",
+    },
+    {
+      id: "safety-4",
+      question: "What insurance coverage is provided?",
+      answer:
+        "All verified handymen are required to carry liability insurance. Additionally, jobs completed through our platform are covered by our protection guarantee. This covers property damage and ensures quality work standards.",
       category: "account",
     },
     {
@@ -180,7 +229,6 @@ export default function HelpCenterPage() {
   ];
 
   const filteredFAQs = faqData.filter((faq) => {
-    // Remove tab filtering when searching
     const matchesTab = searchQuery === "" ? faq.category === activeTab : true;
 
     if (searchQuery === "") return matchesTab;
@@ -241,7 +289,7 @@ export default function HelpCenterPage() {
           </div>
         </div>
 
-        {/* Mobile Tabs - Horizontal Scroll */}
+        {/* Mobile Tabs */}
         <div className="lg:hidden mb-6">
           <div className="flex space-x-1 overflow-x-auto pb-2 scrollbar-hide">
             {tabs.map((tab) => (
@@ -292,12 +340,105 @@ export default function HelpCenterPage() {
               {activeTab === "contact" && (
                 <ContactSupportContent
                   user={user}
+                  initialProblemType={typeParam || ""}
                   onTicketSubmit={() => setActiveTab("getting-started")}
                 />
               )}
 
-              {/* FAQ Content */}
-              {activeTab !== "contact" && (
+              {/* Account & Safety Tab - Enhanced */}
+              {activeTab === "account" && (
+                <div className="space-y-8">
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4">
+                      Account & Safety
+                    </h2>
+                    <p className="text-slate-600 mb-6">
+                      Your safety and security are our top priorities. Learn
+                      about our verification process, safety measures, and how
+                      we protect our community.
+                    </p>
+                  </div>
+
+                  {/* Safety Highlights */}
+                  <div className="grid md:grid-cols-2 gap-6 mb-8">
+                    <div className="bg-green-50 p-6 rounded-xl border border-green-200">
+                      <div className="flex items-center mb-3">
+                        <span className="text-2xl mr-3">🛡️</span>
+                        <h3 className="font-bold text-green-900">
+                          Background Verified
+                        </h3>
+                      </div>
+                      <p className="text-green-700 text-sm">
+                        All handymen undergo comprehensive background checks and
+                        identity verification.
+                      </p>
+                    </div>
+
+                    <div
+                      id="insurance-section"
+                      className="bg-blue-50 p-6 rounded-xl border border-blue-200"
+                    >
+                      <div className="flex items-center mb-3">
+                        <span className="text-2xl mr-3">📋</span>
+                        <h3 className="font-bold text-blue-900">
+                          Insurance Coverage
+                        </h3>
+                      </div>
+                      <p className="text-blue-700 text-sm">
+                        Protected by liability insurance and our platform
+                        guarantee for peace of mind.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* FAQ Content */}
+                  <div className="space-y-4">
+                    {filteredFAQs.map((faq) => (
+                      <div
+                        key={faq.id}
+                        className="border border-slate-200 rounded-xl overflow-hidden"
+                      >
+                        <button
+                          onClick={() => toggleFAQ(faq.id)}
+                          className="w-full px-4 py-4 sm:px-6 sm:py-5 text-left hover:bg-slate-50 transition-colors focus:outline-none focus:bg-slate-50"
+                        >
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-slate-900 text-sm sm:text-base pr-4">
+                              {faq.question}
+                            </h3>
+                            <svg
+                              className={`w-5 h-5 text-slate-400 transform transition-transform flex-shrink-0 ${
+                                expandedFAQ === faq.id ? "rotate-180" : ""
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                          </div>
+                        </button>
+
+                        {expandedFAQ === faq.id && (
+                          <div className="px-4 pb-4 sm:px-6 sm:pb-5 border-t border-slate-100 bg-slate-50">
+                            <p className="text-slate-700 text-sm sm:text-base leading-relaxed pt-4">
+                              {faq.answer}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Other FAQ Content */}
+              {activeTab !== "contact" && activeTab !== "account" && (
                 <div className="space-y-6">
                   <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
                     {tabs.find((tab) => tab.key === activeTab)?.label}
@@ -306,128 +447,87 @@ export default function HelpCenterPage() {
                   {searchQuery && (
                     <p className="text-slate-600 text-sm">
                       {filteredFAQs.length} result
-                      {filteredFAQs.length !== 1 ? "s" : ""} for &quot;
+                      {filteredFAQs.length !== 1 ? "s" : ""} for &ldquo;
                       {searchQuery}&quot;
                     </p>
                   )}
 
-                  {filteredFAQs.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="text-4xl mb-4">🔍</div>
-                      <h3 className="font-semibold text-slate-800 mb-2">
-                        No articles found
-                      </h3>
-                      <p className="text-slate-600 mb-6">
-                        {searchQuery
-                          ? "Try different keywords or browse categories"
-                          : "No articles available in this category yet"}
-                      </p>
-                      <button
-                        onClick={() => setActiveTab("contact")}
-                        className="bg-orange-500 text-white px-6 py-3 rounded-xl hover:bg-orange-600 font-medium"
+                  <div className="space-y-4">
+                    {filteredFAQs.map((faq) => (
+                      <div
+                        key={faq.id}
+                        className="border border-slate-200 rounded-xl overflow-hidden"
                       >
-                        Contact Support
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {filteredFAQs.map((faq) => (
-                        <div
-                          key={faq.id}
-                          className="border border-slate-200 rounded-xl overflow-hidden"
+                        <button
+                          onClick={() => toggleFAQ(faq.id)}
+                          className="w-full px-4 py-4 sm:px-6 sm:py-5 text-left hover:bg-slate-50 transition-colors focus:outline-none focus:bg-slate-50"
                         >
-                          <button
-                            onClick={() => toggleFAQ(faq.id)}
-                            className="w-full px-4 py-4 sm:px-6 sm:py-5 text-left hover:bg-slate-50 transition-colors focus:outline-none focus:bg-slate-50"
-                          >
-                            <div className="flex items-center justify-between">
-                              <h3 className="font-semibold text-slate-900 text-sm sm:text-base pr-4">
-                                {faq.question}
-                              </h3>
-                              <svg
-                                className={`w-5 h-5 text-slate-400 transform transition-transform flex-shrink-0 ${
-                                  expandedFAQ === faq.id ? "rotate-180" : ""
-                                }`}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 9l-7 7-7-7"
-                                />
-                              </svg>
-                            </div>
-                          </button>
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-slate-900 text-sm sm:text-base pr-4">
+                              {faq.question}
+                            </h3>
+                            <svg
+                              className={`w-5 h-5 text-slate-400 transform transition-transform flex-shrink-0 ${
+                                expandedFAQ === faq.id ? "rotate-180" : ""
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                          </div>
+                        </button>
 
-                          {expandedFAQ === faq.id && (
-                            <div className="px-4 pb-4 sm:px-6 sm:pb-5 border-t border-slate-100 bg-slate-50">
-                              <p className="text-slate-700 text-sm sm:text-base leading-relaxed pt-4">
-                                {faq.answer}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Still need help section */}
-                  {filteredFAQs.length > 0 && (
-                    <div className="mt-8 p-6 bg-slate-50 rounded-xl border border-slate-200">
-                      <h3 className="font-semibold text-slate-900 mb-2">
-                        Still need help?
-                      </h3>
-                      <p className="text-slate-600 mb-4 text-sm sm:text-base">
-                        Can&apos;t find what you&apos;re looking for? Our
-                        support team is here to help.
-                      </p>
-                      <button
-                        onClick={() => setActiveTab("contact")}
-                        className="bg-orange-500 text-white px-6 py-3 rounded-xl hover:bg-orange-600 font-medium transition-colors text-sm sm:text-base"
-                      >
-                        Contact Support
-                      </button>
-                    </div>
-                  )}
+                        {expandedFAQ === faq.id && (
+                          <div className="px-4 pb-4 sm:px-6 sm:pb-5 border-t border-slate-100 bg-slate-50">
+                            <p className="text-slate-700 text-sm sm:text-base leading-relaxed pt-4">
+                              {faq.answer}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* Custom scrollbar hide for mobile tabs */}
-      <style jsx>{`
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-      `}</style>
     </div>
   );
 }
 
-// Contact Support Component
+// Updated Contact Support Component
 function ContactSupportContent({
   user,
+  initialProblemType,
   onTicketSubmit,
 }: {
   user: User;
+  initialProblemType: string;
   onTicketSubmit: () => void;
 }) {
   const [formData, setFormData] = useState({
-    type: "",
+    type: initialProblemType || "",
     description: "",
     priority: "normal" as "low" | "normal" | "high" | "urgent",
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Set initial problem type based on URL parameter
+  useEffect(() => {
+    if (initialProblemType) {
+      setFormData((prev) => ({ ...prev, type: initialProblemType }));
+    }
+  }, [initialProblemType]);
 
   const supportTypes = [
     {
@@ -542,32 +642,23 @@ function ContactSupportContent({
           Can&apos;t find what you need? Send us a message and we&apos;ll help
           you out.
         </p>
+        {initialProblemType && (
+          <div className="mt-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+            <p className="text-orange-700 text-sm">
+              📋 Problem type pre-selected:{" "}
+              <strong>
+                {
+                  supportTypes.find((t) => t.value === initialProblemType)
+                    ?.label
+                }
+              </strong>
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Contact Methods */}
-      <div className="grid sm:grid-cols-2 gap-4 mb-8">
-        <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-          <div className="flex items-center mb-2">
-            <span className="text-2xl mr-3">📧</span>
-            <h3 className="font-semibold text-blue-900">Email Support</h3>
-          </div>
-          <p className="text-blue-700 text-sm">
-            Average response time: 4-6 hours
-          </p>
-        </div>
-
-        <div className="p-4 bg-green-50 rounded-xl border border-green-200">
-          <div className="flex items-center mb-2">
-            <span className="text-2xl mr-3">💬</span>
-            <h3 className="font-semibold text-green-900">Priority Support</h3>
-          </div>
-          <p className="text-green-700 text-sm">Urgent issues: Within 1 hour</p>
-        </div>
-      </div>
-
-      {/* Support Form */}
+      {/* Rest of contact form remains the same... */}
       <div className="space-y-6">
-        {/* Issue Type */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-3">
             What do you need help with? *
@@ -605,7 +696,6 @@ function ContactSupportContent({
           </div>
         </div>
 
-        {/* Priority */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-3">
             Priority Level
@@ -631,7 +721,6 @@ function ContactSupportContent({
           </select>
         </div>
 
-        {/* Description */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-3">
             Describe your issue *
@@ -643,7 +732,7 @@ function ContactSupportContent({
             }
             rows={6}
             className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm sm:text-base"
-            placeholder="Please provide as much detail as possible about your issue. Include any error messages, steps you took, and what you expected to happen."
+            placeholder="Please provide as much detail as possible about your issue..."
             maxLength={1000}
           />
           <p className="text-xs text-slate-500 mt-2">
@@ -651,29 +740,15 @@ function ContactSupportContent({
           </p>
         </div>
 
-        {/* Submit Button */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={handleSubmit}
-            disabled={
-              submitting || !formData.type || !formData.description.trim()
-            }
-            className="flex-1 bg-orange-500 text-white py-3 px-6 rounded-xl font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm sm:text-base"
-          >
-            {submitting ? "Submitting..." : "Submit Support Ticket"}
-          </button>
-        </div>
-      </div>
-
-      {/* Help Note */}
-      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-        <h4 className="font-medium text-slate-900 mb-2">Before you submit:</h4>
-        <ul className="text-sm text-slate-600 space-y-1">
-          <li>• Check our FAQ sections above for quick answers</li>
-          <li>• Include relevant details like job IDs or error messages</li>
-          <li>• For urgent safety issues, call local authorities first</li>
-          <li>• We typically respond within 4-6 hours during business days</li>
-        </ul>
+        <button
+          onClick={handleSubmit}
+          disabled={
+            submitting || !formData.type || !formData.description.trim()
+          }
+          className="w-full bg-orange-500 text-white py-3 px-6 rounded-xl font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm sm:text-base"
+        >
+          {submitting ? "Submitting..." : "Submit Support Ticket"}
+        </button>
       </div>
     </div>
   );

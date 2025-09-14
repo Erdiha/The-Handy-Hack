@@ -7,8 +7,10 @@ import {
   handymanProfiles,
   neighborhoods,
   handymanServices,
+  customerProfiles, // Add this import
 } from "@/lib/schema";
 import { eq } from "drizzle-orm";
+// Update the GET method:
 
 export async function GET() {
   try {
@@ -20,9 +22,14 @@ export async function GET() {
 
     const userId = parseInt(session.user.id);
 
-    // Get user basic info
+    // ✅ Get user basic info FROM DATABASE (not session)
     const user = await db
-      .select()
+      .select({
+        id: users.id,
+        name: users.name, //  Get fresh name from DB
+        email: users.email, // Get fresh email from DB
+        phone: users.phone,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -50,7 +57,7 @@ export async function GET() {
         .limit(1);
 
       if (handymanProfile[0]) {
-        // ✅ FETCH ACTUAL SERVICES FROM DATABASE
+        // Get actual services from database
         const userServices = await db
           .select({
             serviceName: handymanServices.serviceName,
@@ -58,21 +65,17 @@ export async function GET() {
           .from(handymanServices)
           .where(eq(handymanServices.handymanId, userId));
 
-        // Extract service names, or use default if none found
         const services =
           userServices.length > 0
             ? userServices.map((s) => s.serviceName)
-            : ["Plumbing", "Electrical"]; // Default fallback
+            : ["Plumbing", "Electrical"];
 
-        console.log(
-          `✅ Fetched ${services.length} services for handyman ${userId}:`,
-          services
-        );
-
-        // Handyman has completed onboarding
+        //  Return fresh data from database
         return NextResponse.json({
           success: true,
           hasCompletedOnboarding: true,
+          name: user[0].name, //  Fresh from DB
+          email: user[0].email, //  Fresh from DB
           phone: user[0].phone,
           bio: handymanProfile[0].bio,
           hourlyRate: handymanProfile[0].hourlyRate,
@@ -80,13 +83,15 @@ export async function GET() {
           useScheduledAvailability:
             handymanProfile[0].useScheduledAvailability ?? false,
           neighborhood: handymanProfile[0].neighborhoodName,
-          services: services, // ✅ REAL SERVICES FROM DATABASE
+          services: services,
         });
       } else {
         // Handyman needs onboarding
         return NextResponse.json({
           success: true,
           hasCompletedOnboarding: false,
+          name: user[0].name, //  Fresh from DB
+          email: user[0].email, // Fresh from DB
           phone: user[0].phone,
           isAvailable: true,
         });
@@ -96,12 +101,16 @@ export async function GET() {
       if (user[0].phone) {
         return NextResponse.json({
           hasCompletedOnboarding: true,
+          name: user[0].name, //  Fresh from DB
+          email: user[0].email, //  Fresh from DB
           phone: user[0].phone,
           neighborhood: "Highland Park",
         });
       } else {
         return NextResponse.json({
           hasCompletedOnboarding: false,
+          name: user[0].name, //  Fresh from DB
+          email: user[0].email, //  Fresh from DB
           phone: null,
         });
       }
@@ -114,6 +123,7 @@ export async function GET() {
     );
   }
 }
+
 export async function PATCH(request: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -127,25 +137,78 @@ export async function PATCH(request: Request) {
     // Update basic user info
     const { name, email, phone, bio, neighborhood } = updates;
 
-    await db
-      .update(users)
-      .set({
-        ...(name && { name }),
-        ...(email && { email }),
-        ...(phone && { phone }),
-      })
-      .where(eq(users.id, userId));
+    // Properly typed user update object
+    const userUpdateData: {
+      name?: string;
+      email?: string;
+      phone?: string;
+    } = {};
 
-    // For handymen, update profile
-    if (session.user.role === "handyman" && (bio || neighborhood)) {
-      await db
-        .update(handymanProfiles)
-        .set({
-          ...(bio && { bio }),
-          updatedAt: new Date(),
-        })
-        .where(eq(handymanProfiles.userId, userId));
+    if (name !== undefined) userUpdateData.name = name;
+    if (email !== undefined) userUpdateData.email = email;
+    if (phone !== undefined) userUpdateData.phone = phone;
+
+    if (Object.keys(userUpdateData).length > 0) {
+      await db.update(users).set(userUpdateData).where(eq(users.id, userId));
     }
+
+    // Handle role-specific updates
+    if (session.user.role === "handyman") {
+      // For handymen: update handymanProfiles
+      if (bio !== undefined || neighborhood !== undefined) {
+        const profileUpdateData: {
+          bio?: string;
+          neighborhoodId?: number;
+          updatedAt: Date;
+        } = {
+          updatedAt: new Date(),
+        };
+
+        if (bio !== undefined) profileUpdateData.bio = bio;
+        if (neighborhood !== undefined) {
+          // neighborhood should be the ID for handymen
+          const neighborhoodId = parseInt(neighborhood);
+          if (!isNaN(neighborhoodId)) {
+            profileUpdateData.neighborhoodId = neighborhoodId;
+          }
+        }
+
+        await db
+          .update(handymanProfiles)
+          .set(profileUpdateData)
+          .where(eq(handymanProfiles.userId, userId));
+      }
+    } else if (session.user.role === "customer") {
+      // For customers: update customerProfiles
+      if (neighborhood !== undefined) {
+        // Check if customer profile exists
+        const existingProfile = await db
+          .select()
+          .from(customerProfiles)
+          .where(eq(customerProfiles.userId, userId))
+          .limit(1);
+
+        if (existingProfile[0]) {
+          // Update existing profile
+          await db
+            .update(customerProfiles)
+            .set({
+              neighborhood: neighborhood, // Store as text for customers
+              updatedAt: new Date(),
+            })
+            .where(eq(customerProfiles.userId, userId));
+        } else {
+          // Create new profile
+          await db.insert(customerProfiles).values({
+            userId: userId,
+            neighborhood: neighborhood,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
+      }
+    }
+
     const updatedUser = await db
       .select()
       .from(users)
@@ -157,6 +220,7 @@ export async function PATCH(request: Request) {
       user: updatedUser[0],
     });
   } catch (error) {
+    console.error("Profile update error:", error);
     return NextResponse.json(
       { error: "Failed to update profile" },
       { status: 500 }
