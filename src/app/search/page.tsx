@@ -680,8 +680,8 @@ export default function SearchPage() {
                     </p>
                     <Button
                       onClick={() => setIsEmergencyModalOpen(true)}
-                      variant="danger"
-                      className="w-full py-3 sm:py-4 text-base sm:text-lg"
+                      variant="primary"
+                      className="w-full py-3 sm:py-4 text-base sm:text-lg bg-red-500 hover:bg-red-600"
                     >
                       Emergency Help (15 min)
                     </Button>

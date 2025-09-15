@@ -1,10 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
-import PlaceholderPage from "../placeholder-page/page";
+import PlaceholderPage from "@/components/PlaceholderPage";
 
 interface TeamMember {
   name: string;
@@ -32,7 +32,7 @@ interface PressItem {
   link?: string;
 }
 
-export default function CompanyPage() {
+function CompanyContent() {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
 
@@ -318,47 +318,6 @@ export default function CompanyPage() {
                       ))}
                     </div>
                   </div>
-
-                  {/* Stats */}
-                  {/* <div className="bg-gradient-to-r from-orange-50 to-blue-50 p-8 rounded-2xl border border-orange-200">
-                    <h3 className="text-xl font-bold text-slate-900 mb-6 text-center">
-                      By the Numbers
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-                      <div>
-                        <div className="text-2xl font-bold text-orange-600 mb-1">
-                          500+
-                        </div>
-                        <div className="text-slate-600 text-sm">
-                          Verified Handymen
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold text-blue-600 mb-1">
-                          2,000+
-                        </div>
-                        <div className="text-slate-600 text-sm">
-                          Jobs Completed
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold text-green-600 mb-1">
-                          8
-                        </div>
-                        <div className="text-slate-600 text-sm">
-                          Neighborhoods
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold text-purple-600 mb-1">
-                          4.9★
-                        </div>
-                        <div className="text-slate-600 text-sm">
-                          Average Rating
-                        </div>
-                      </div>
-                    </div>
-                  </div> */}
                 </div>
               )}
 
@@ -370,174 +329,6 @@ export default function CompanyPage() {
                   icon="💼"
                   showBackButton={false}
                 />
-                // <div className="space-y-8">
-                //   <div>
-                //     <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-4">
-                //       Join Our Team
-                //     </h2>
-                //     <p className="text-slate-600 leading-relaxed mb-6">
-                //       Help us build the future of neighborhood connections.
-                //       We&apos;re looking for passionate people who believe in
-                //       community, trust, and making home services better for
-                //       everyone.
-                //     </p>
-                //   </div>
-
-                //   {/* Why Work Here */}
-                //   <div>
-                //     <h3 className="text-xl font-bold text-slate-900 mb-6">
-                //       Why TheHandyHack?
-                //     </h3>
-                //     <div className="grid md:grid-cols-2 gap-6">
-                //       <div className="space-y-4">
-                //         <div className="flex items-start space-x-3">
-                //           <span className="text-green-500 text-xl">✓</span>
-                //           <div>
-                //             <h4 className="font-semibold text-slate-900">
-                //               Impact-Driven Work
-                //             </h4>
-                //             <p className="text-slate-600 text-sm">
-                //               Build technology that strengthens real communities
-                //             </p>
-                //           </div>
-                //         </div>
-                //         <div className="flex items-start space-x-3">
-                //           <span className="text-green-500 text-xl">✓</span>
-                //           <div>
-                //             <h4 className="font-semibold text-slate-900">
-                //               Competitive Benefits
-                //             </h4>
-                //             <p className="text-slate-600 text-sm">
-                //               Health, dental, vision, equity, and flexible PTO
-                //             </p>
-                //           </div>
-                //         </div>
-                //         <div className="flex items-start space-x-3">
-                //           <span className="text-green-500 text-xl">✓</span>
-                //           <div>
-                //             <h4 className="font-semibold text-slate-900">
-                //               Remote-First Culture
-                //             </h4>
-                //             <p className="text-slate-600 text-sm">
-                //               Work from anywhere with quarterly team gatherings
-                //             </p>
-                //           </div>
-                //         </div>
-                //       </div>
-                //       <div className="space-y-4">
-                //         <div className="flex items-start space-x-3">
-                //           <span className="text-green-500 text-xl">✓</span>
-                //           <div>
-                //             <h4 className="font-semibold text-slate-900">
-                //               Growth Opportunities
-                //             </h4>
-                //             <p className="text-slate-600 text-sm">
-                //               Learn from experienced team members and shape our
-                //               direction
-                //             </p>
-                //           </div>
-                //         </div>
-                //         <div className="flex items-start space-x-3">
-                //           <span className="text-green-500 text-xl">✓</span>
-                //           <div>
-                //             <h4 className="font-semibold text-slate-900">
-                //               Startup Equity
-                //             </h4>
-                //             <p className="text-slate-600 text-sm">
-                //               Share in our success as we grow and expand
-                //             </p>
-                //           </div>
-                //         </div>
-                //         <div className="flex items-start space-x-3">
-                //           <span className="text-green-500 text-xl">✓</span>
-                //           <div>
-                //             <h4 className="font-semibold text-slate-900">
-                //               Local Focus
-                //             </h4>
-                //             <p className="text-slate-600 text-sm">
-                //               Based in LA with strong neighborhood connections
-                //             </p>
-                //           </div>
-                //         </div>
-                //       </div>
-                //     </div>
-                //   </div>
-
-                //   {/* Open Positions */}
-                //   <div>
-                //     <h3 className="text-xl font-bold text-slate-900 mb-6">
-                //       Open Positions
-                //     </h3>
-                //     <div className="space-y-4">
-                //       {jobListings.map((job) => (
-                //         <div
-                //           key={job.id}
-                //           className="border border-slate-200 rounded-xl p-6 hover:shadow-md transition-shadow"
-                //         >
-                //           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
-                //             <div>
-                //               <h4 className="font-bold text-slate-900 text-lg mb-1">
-                //                 {job.title}
-                //               </h4>
-                //               <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-                //                 <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                //                   {job.department}
-                //                 </span>
-                //                 <span className="bg-green-100 text-green-700 px-2 py-1 rounded">
-                //                   {job.location}
-                //                 </span>
-                //                 <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded">
-                //                   {job.type}
-                //                 </span>
-                //               </div>
-                //             </div>
-                //             <Button
-                //               variant="outline"
-                //               colorScheme="orange"
-                //               size="sm"
-                //               className="mt-4 sm:mt-0"
-                //             >
-                //               Apply Now
-                //             </Button>
-                //           </div>
-                //           <p className="text-slate-600 mb-4">
-                //             {job.description}
-                //           </p>
-                //           <div>
-                //             <h5 className="font-semibold text-slate-900 mb-2">
-                //               Key Requirements:
-                //             </h5>
-                //             <ul className="text-slate-600 text-sm space-y-1">
-                //               {job.requirements.map((req, index) => (
-                //                 <li key={index} className="flex items-start">
-                //                   <span className="text-orange-500 mr-2">
-                //                     •
-                //                   </span>
-                //                   {req}
-                //                 </li>
-                //               ))}
-                //             </ul>
-                //           </div>
-                //         </div>
-                //       ))}
-                //     </div>
-                //   </div>
-
-                //   {/* Don't see a fit? */}
-                //   <div className="bg-orange-50 p-6 rounded-xl border border-orange-200">
-                //     <h3 className="font-bold text-slate-900 mb-2">
-                //       Don&apos;t see the perfect role?
-                //     </h3>
-                //     <p className="text-slate-600 mb-4">
-                //       We&apos;re always looking for talented people who share
-                //       our vision. Send us your resume and tell us how you&apos;d
-                //       like to contribute to building stronger neighborhoods.
-                //     </p>
-                //     <Button variant="primary" colorScheme="orange">
-                //       Send General Application
-                //     </Button>
-                //   </div>
-                // </div>
               )}
 
               {/* Press Tab */}
@@ -548,146 +339,28 @@ export default function CompanyPage() {
                   icon="📰"
                   showBackButton={false}
                 />
-                // <div className="space-y-8">
-                //   <div>
-                //     <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-4">
-                //       Press & Media
-                //     </h2>
-                //     <p className="text-slate-600 leading-relaxed mb-6">
-                //       Stay updated with TheHandyHack news, press releases, and
-                //       media coverage. For press inquiries, contact us at
-                //       press@thehandyhack.com
-                //     </p>
-                //   </div>
-
-                //   {/* Media Kit */}
-                //   <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                //     <h3 className="font-bold text-slate-900 mb-4">Media Kit</h3>
-                //     <div className="grid sm:grid-cols-3 gap-4">
-                //       <Button
-                //         variant="outline"
-                //         colorScheme="gray"
-                //         size="sm"
-                //         fullWidth
-                //       >
-                //         Download Logos
-                //       </Button>
-                //       <Button
-                //         variant="outline"
-                //         colorScheme="gray"
-                //         size="sm"
-                //         fullWidth
-                //       >
-                //         Brand Guidelines
-                //       </Button>
-                //       <Button
-                //         variant="outline"
-                //         colorScheme="gray"
-                //         size="sm"
-                //         fullWidth
-                //       >
-                //         Product Screenshots
-                //       </Button>
-                //     </div>
-                //   </div>
-
-                //   {/* Press Items */}
-                //   <div>
-                //     <h3 className="text-xl font-bold text-slate-900 mb-6">
-                //       Recent News
-                //     </h3>
-                //     <div className="space-y-6">
-                //       {pressItems.map((item) => (
-                //         <article
-                //           key={item.id}
-                //           className="border border-slate-200 rounded-xl p-6"
-                //         >
-                //           <div className="flex items-start justify-between mb-3">
-                //             <div className="flex-1">
-                //               <div className="flex items-center gap-2 mb-2">
-                //                 <span
-                //                   className={`text-xs px-2 py-1 rounded ${
-                //                     item.type === "press-release"
-                //                       ? "bg-blue-100 text-blue-700"
-                //                       : item.type === "media-mention"
-                //                       ? "bg-green-100 text-green-700"
-                //                       : "bg-orange-100 text-orange-700"
-                //                   }`}
-                //                 >
-                //                   {item.type === "press-release"
-                //                     ? "Press Release"
-                //                     : item.type === "media-mention"
-                //                     ? "Media Mention"
-                //                     : "Company News"}
-                //                 </span>
-                //                 <span className="text-slate-500 text-sm">
-                //                   {new Date(item.date).toLocaleDateString(
-                //                     "en-US",
-                //                     {
-                //                       year: "numeric",
-                //                       month: "long",
-                //                       day: "numeric",
-                //                     }
-                //                   )}
-                //                 </span>
-                //               </div>
-                //               <h4 className="font-bold text-slate-900 text-lg mb-2">
-                //                 {item.title}
-                //               </h4>
-                //               <p className="text-slate-600 leading-relaxed">
-                //                 {item.excerpt}
-                //               </p>
-                //             </div>
-                //             {item.link && (
-                //               <Button
-                //                 variant="ghost"
-                //                 colorScheme="orange"
-                //                 size="sm"
-                //                 className="ml-4"
-                //               >
-                //                 Read More →
-                //               </Button>
-                //             )}
-                //           </div>
-                //         </article>
-                //       ))}
-                //     </div>
-                //   </div>
-
-                //   {/* Press Contact */}
-                //   <div className="bg-blue-50 p-6 rounded-xl border border-blue-200">
-                //     <h3 className="font-bold text-slate-900 mb-4">
-                //       Press Inquiries
-                //     </h3>
-                //     <div className="grid md:grid-cols-2 gap-6">
-                //       <div>
-                //         <h4 className="font-semibold text-slate-900 mb-2">
-                //           Media Contact
-                //         </h4>
-                //         <p className="text-slate-600 text-sm mb-1">
-                //           press@thehandyhack.com
-                //         </p>
-                //         <p className="text-slate-600 text-sm">(555) 123-4567</p>
-                //       </div>
-                //       <div>
-                //         <h4 className="font-semibold text-slate-900 mb-2">
-                //           Quick Facts
-                //         </h4>
-                //         <ul className="text-slate-600 text-sm space-y-1">
-                //           <li>• Founded: 2024</li>
-                //           <li>• Headquarters: Los Angeles, CA</li>
-                //           <li>• Focus: Neighborhood home services</li>
-                //           <li>• Stage: Seed-funded startup</li>
-                //         </ul>
-                //       </div>
-                //     </div>
-                //   </div>
-                // </div>
               )}
             </div>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CompanyPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-orange-50 pt-16 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-slate-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <CompanyContent />
+    </Suspense>
   );
 }

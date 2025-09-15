@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { JobDetailsModal } from "@/components/modals/JobDetailsModal";
-import { AnimatedCounter } from "@/components/ui/AnimatedCounter";
 import { Toast } from "@/components/ui/Toast";
 import { RateUpdateModal } from "@/components/modals/RateUpdateModal";
 import { ManageServicesModal } from "@/components/modals/ManageServicesModal";
@@ -197,8 +196,8 @@ function HandymanDashboard({
   const [jobActionLoading, setJobActionLoading] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [useScheduledAvailability, setUseScheduledAvailability] =
-    useState(false);
+  // const [useScheduledAvailability, setUseScheduledAvailability] =
+  //   useState(false);
   const [currentAvailability, setCurrentAvailability] =
     useState<AvailabilityData>({
       weeklySchedule: {
@@ -1173,8 +1172,8 @@ function CustomerDashboard({
                       </Link>
                       <Button
                         onClick={() => setIsEmergencyModalOpen(true)}
-                        variant="danger"
-                        className="w-full py-4 text-lg"
+                        variant="outline"
+                        className="w-full py-4 text-lg bg-red-500 text-white border-red-500 hover:bg-red-600 hover:border-red-600"
                       >
                         Emergency Help (15 min)
                       </Button>

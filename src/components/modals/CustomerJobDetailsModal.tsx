@@ -251,8 +251,8 @@ export function CustomerJobDetailsModal({
                       : () => setShowDeleteConfirm(true)
                   }
                   disabled={actionLoading}
-                  variant="danger"
-                  className="flex-1"
+                  variant="secondary"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white border-red-600"
                 >
                   {actionLoading
                     ? "Deleting..."

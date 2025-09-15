@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 interface FAQItem {
@@ -16,7 +16,7 @@ interface User {
   email: string;
 }
 
-export default function HelpCenterPage() {
+function HelpCenterContent() {
   const searchParams = useSearchParams();
 
   // Get URL parameters
@@ -448,7 +448,7 @@ export default function HelpCenterPage() {
                     <p className="text-slate-600 text-sm">
                       {filteredFAQs.length} result
                       {filteredFAQs.length !== 1 ? "s" : ""} for &ldquo;
-                      {searchQuery}&quot;
+                      {searchQuery}&rdquo;
                     </p>
                   )}
 
@@ -501,6 +501,23 @@ export default function HelpCenterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function HelpCenterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-orange-50 pt-16 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-slate-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <HelpCenterContent />
+    </Suspense>
   );
 }
 

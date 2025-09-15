@@ -332,8 +332,7 @@ export function ArchivedJobsModal({
                           <Button
                             onClick={() => handleDeleteJob(selectedJob.id)}
                             disabled={deletingJob === selectedJob.id}
-                            variant="danger"
-                            className="flex-1"
+                            className="flex-1 bg-red-500 hover:bg-red-600 text-white"
                           >
                             {deletingJob === selectedJob.id ? (
                               <>
