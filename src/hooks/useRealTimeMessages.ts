@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { Socket } from "socket.io-client";
-import { socketManager } from "@/lib/socket";
 
 // Extend Window interface for global socket
 declare global {
@@ -99,14 +98,8 @@ export const useRealTimeMessages = ({
   }, [setActiveConversation]);
 
   // Get global socket from window (set by NotificationContext)
-  // Get global socket from socketManager
   const getGlobalSocket = useCallback((): Socket | null => {
-    let socket = window.globalSocket;
-    if (!socket) {
-      socket = socketManager.connect();
-      window.globalSocket = socket;
-    }
-    return socket;
+    return window.globalSocket || null;
   }, []);
 
   // In your useRealTimeMessages hook, fix this useEffect:
