@@ -1,6 +1,4 @@
-// Create: src/lib/socket.ts
-import { Server as SocketIOServer } from "socket.io";
-import { Server as HTTPServer } from "http";
+import { io, Socket } from "socket.io-client";
 
 export interface SocketMessage {
   id: string;
@@ -13,47 +11,53 @@ export interface SocketMessage {
   tempId?: string;
 }
 
-let io: SocketIOServer;
+class SocketManager {
+  private socket: Socket | null = null;
 
-export const initializeSocket = (server: HTTPServer) => {
-  io = new SocketIOServer(server, {
-    cors: {
-      origin: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-      methods: ["GET", "POST"],
-    },
-  });
+  connect() {
+    if (this.socket?.connected) return this.socket;
 
-  io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
+    const SOCKET_URL =
+      process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
-    // Join conversation room
-    socket.on("join_conversation", (conversationId) => {
-      socket.join(conversationId);
-      console.log(`User ${socket.id} joined conversation ${conversationId}`);
+    this.socket = io(SOCKET_URL, {
+      transports: ["websocket", "polling"],
     });
 
-    // Leave conversation room
-    socket.on("leave_conversation", (conversationId) => {
-      socket.leave(conversationId);
+    this.socket.on("connect", () => {
+      console.log("Connected to socket server:", this.socket?.id);
     });
 
-    // Handle new messages
-    socket.on("send_message", (data) => {
-      // Broadcast to conversation room
-      socket.to(data.conversationId).emit("new_message", data);
+    this.socket.on("disconnect", () => {
+      console.log("Disconnected from socket server");
     });
 
-    socket.on("disconnect", () => {
-      console.log("User disconnected:", socket.id);
-    });
-  });
-
-  return io;
-};
-
-export const getIO = () => {
-  if (!io) {
-    throw new Error("Socket.io not initialized");
+    return this.socket;
   }
-  return io;
-};
+
+  disconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+  }
+
+  getSocket() {
+    return this.socket;
+  }
+
+  joinConversation(conversationId: string) {
+    this.socket?.emit("join_conversation", conversationId);
+  }
+
+  sendMessage(messageData: SocketMessage) {
+    this.socket?.emit("send_message", messageData);
+  }
+
+  onNewMessage(callback: (message: SocketMessage) => void) {
+    this.socket?.on("new_message", callback);
+  }
+}
+
+export const socketManager = new SocketManager();
+export const getSocket = () => socketManager.getSocket();
