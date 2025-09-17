@@ -63,12 +63,12 @@ export function Navbar() {
       };
     }
   }, [mobileMenuOpen]);
-
   const getNavigationItems = (): NavigationItem[] => {
     if (!session) {
       return [
-        { href: "/search", label: "Find Help", icon: "🔍" },
+        // { href: "/search", label: "Find Help", icon: "🔍" }, // ❌ Remove
         { href: "/how-it-works", label: "How It Works", icon: "ℹ️" },
+        { href: "/browse", label: "Browse Services", icon: "🔍" }, // Public alternative
       ];
     }
 
