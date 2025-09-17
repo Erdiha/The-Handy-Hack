@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef, Suspense } from "react";
-import { signIn, getSession, signOut } from "next-auth/react";
+import { signIn, getSession, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -28,6 +28,7 @@ function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const { data: session, status } = useSession();
 
   useEffect(() => {
     const verified = searchParams.get("verified");
@@ -111,17 +112,10 @@ function SignInContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const shouldSignOut = searchParams.get("signout");
-      if (!shouldSignOut) {
-        const session = await getSession();
-        if (session?.user) {
-          router.push("/dashboard");
-        }
-      }
-    };
-    checkAuth();
-  }, [router, searchParams]);
+    if (status === "authenticated" && session?.user) {
+      router.push("/dashboard");
+    }
+  }, [session, status, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
